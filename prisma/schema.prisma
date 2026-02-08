@@ -173,21 +173,28 @@ model Tenant {
   customerInvoices       CustomerInvoice[]
   customerCredits        CustomerCredit[]
   approvalAuditLogs      ApprovalAuditLog[]
+  // Product Information Module
+  styles                 Style[]
+  fabrics                Fabric[]
+  rawMaterials           RawMaterial[]
+  packaging              Packaging[]
+  finishedProducts       FinishedProduct[]
+  mediaFiles             MediaFile[]
 
   @@map("tenants")
 }
 
 model User {
-  id             String     @id @default(cuid())
+  id             String   @id @default(cuid())
   tenantId       String
-  supabaseUserId String?    @unique
-  email          String     @unique
+  supabaseUserId String?  @unique
+  email          String   @unique
   name           String
-  role           String     @default("user")
-  isSuperAdmin   Boolean    @default(false)
-  isActive       Boolean    @default(true)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  role           String   @default("user")
+  isSuperAdmin   Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   tenant      Tenant           @relation(fields: [tenantId], references: [id])
   permissions UserPermission[]
@@ -272,6 +279,7 @@ model Entity {
   purchaseOrders    PurchaseOrder[]
   payments          Payment[]
   inventoryOutflows InventoryOutflow[]
+  finishedProducts  FinishedProduct[]
 
   @@unique([tenantId, name])
   @@map("entities")
@@ -339,6 +347,10 @@ model Supplier {
   pricings       SupplierPricing[]
   purchaseOrders PurchaseOrder[]
   payments       Payment[]
+  // Product Information Module relations
+  fabrics        Fabric[]
+  rawMaterials   RawMaterial[]
+  packaging      Packaging[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -907,4 +919,380 @@ model ApprovalAuditLog {
 
   @@index([tenantId, approvalType])
   @@map("approval_audit_log")
+}
+
+// ============================================
+// PRODUCT INFORMATION MODULE
+// ============================================
+
+// Style Library (Templates)
+model Style {
+  id        String @id @default(cuid())
+  tenantId  String
+  styleCode String
+  styleName String
+
+  // Product Attributes
+  gender        String?
+  category      String?
+  sleeves       String?
+  neckShape     String?
+  backShape     String?
+  openMechanism String?
+  padding       String?
+
+  // Measurements (in inches) - Chest
+  chest32 Decimal? @db.Decimal(10, 2)
+  chest34 Decimal? @db.Decimal(10, 2)
+  chest36 Decimal? @db.Decimal(10, 2)
+  chest38 Decimal? @db.Decimal(10, 2)
+  chest40 Decimal? @db.Decimal(10, 2)
+  chest42 Decimal? @db.Decimal(10, 2)
+  chest44 Decimal? @db.Decimal(10, 2)
+  chest46 Decimal? @db.Decimal(10, 2)
+  chest48 Decimal? @db.Decimal(10, 2)
+  chest50 Decimal? @db.Decimal(10, 2)
+
+  // Measurements - Length
+  length32 Decimal? @db.Decimal(10, 2)
+  length34 Decimal? @db.Decimal(10, 2)
+  length36 Decimal? @db.Decimal(10, 2)
+  length38 Decimal? @db.Decimal(10, 2)
+  length40 Decimal? @db.Decimal(10, 2)
+  length42 Decimal? @db.Decimal(10, 2)
+  length44 Decimal? @db.Decimal(10, 2)
+  length46 Decimal? @db.Decimal(10, 2)
+  length48 Decimal? @db.Decimal(10, 2)
+  length50 Decimal? @db.Decimal(10, 2)
+
+  // Measurements - Waist
+  waist32 Decimal? @db.Decimal(10, 2)
+  waist34 Decimal? @db.Decimal(10, 2)
+  waist36 Decimal? @db.Decimal(10, 2)
+  waist38 Decimal? @db.Decimal(10, 2)
+  waist40 Decimal? @db.Decimal(10, 2)
+  waist42 Decimal? @db.Decimal(10, 2)
+  waist44 Decimal? @db.Decimal(10, 2)
+  waist46 Decimal? @db.Decimal(10, 2)
+  waist48 Decimal? @db.Decimal(10, 2)
+  waist50 Decimal? @db.Decimal(10, 2)
+
+  // Other measurements
+  shoulder     Decimal? @db.Decimal(10, 2)
+  neckDepth    Decimal? @db.Decimal(10, 2)
+  armhole      Decimal? @db.Decimal(10, 2)
+  sleeveLength Decimal? @db.Decimal(10, 2)
+
+  notes     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  finishedProducts FinishedProduct[]
+
+  @@unique([tenantId, styleCode])
+  @@index([tenantId])
+  @@map("styles")
+}
+
+// Fabric Library
+model Fabric {
+  id             String   @id @default(cuid())
+  tenantId       String
+  fabricSku      String
+  material       String
+  color          String
+  design         String?
+  work           String?
+  widthCm        Decimal? @db.Decimal(10, 2)
+  weightPerMeter Decimal? @db.Decimal(10, 2)
+  costAmount     Decimal  @db.Decimal(15, 2)
+  gstRatePct     Decimal  @default(5.00) @db.Decimal(5, 2)
+  hsnCode        String?
+  uom            String   @default("Meters")
+  supplierId     String?
+  notes          String?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  supplier         Supplier?         @relation(fields: [supplierId], references: [id])
+  finishedProducts FinishedProduct[]
+
+  @@unique([tenantId, fabricSku])
+  @@index([tenantId])
+  @@map("fabrics")
+}
+
+// Raw Material Library
+model RawMaterial {
+  id               String   @id @default(cuid())
+  tenantId         String
+  rmSku            String
+  rmType           String
+  color            String?
+  measurementUnit  String
+  unitsPerQuantity Int
+  costPerSku       Decimal  @db.Decimal(15, 2)
+  gstRatePct       Decimal  @default(5.00) @db.Decimal(5, 2)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@unique([tenantId, rmSku])
+  @@index([tenantId])
+  @@map("raw_materials")
+}
+
+// Packaging Library
+model Packaging {
+  id               String   @id @default(cuid())
+  tenantId         String
+  pkgSku           String
+  pkgType          String
+  description      String?
+  channel          String?
+  dimensions       String?
+  measurementUnit  String
+  unitsPerQuantity Int
+  costPerUnit      Decimal  @db.Decimal(15, 2)
+  gstRatePct       Decimal  @default(5.00) @db.Decimal(5, 2)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@unique([tenantId, pkgSku])
+  @@index([tenantId])
+  @@map("packaging")
+}
+
+// Finished Product Library (sellable products with style + fabric)
+model FinishedProduct {
+  id       String @id @default(cuid())
+  tenantId String
+
+  // SKU Structure
+  parentSku String
+  childSku  String
+
+  // Relations
+  styleId  String
+  fabricId String
+  entityId String?
+
+  // Product Attributes
+  title String
+  color String
+  size  String
+
+  // Pricing
+  costAmount   Decimal  @db.Decimal(15, 2)
+  sellingPrice Decimal? @db.Decimal(15, 2)
+  mrp          Decimal? @db.Decimal(15, 2)
+  gstRatePct   Decimal  @default(5.00) @db.Decimal(5, 2)
+  currency     String   @default("INR")
+
+  // Selling Channels (JSON array of channel codes)
+  sellingChannels Json @default("[]")
+
+  notes     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  style        Style            @relation(fields: [styleId], references: [id])
+  fabric       Fabric           @relation(fields: [fabricId], references: [id])
+  entity       Entity?          @relation(fields: [entityId], references: [id])
+  media        MediaFile[]
+  amazonData   ProductAmazon?
+  myntraData   ProductMyntra?
+  shopifyData  ProductShopify?
+  flipkartData ProductFlipkart?
+  nykaaData    ProductNykaa?
+
+  @@unique([tenantId, childSku])
+  @@index([tenantId])
+  @@index([parentSku])
+  @@index([styleId])
+  @@index([fabricId])
+  @@map("finished_products")
+}
+
+// Media Files for products
+model MediaFile {
+  id            String   @id @default(cuid())
+  tenantId      String
+  entityType    String
+  entityId      String
+  fileType      String
+  fileName      String
+  filePath      String
+  fileSize      Int
+  mimeType      String
+  isPrimary     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  width         Int?
+  height        Int?
+  thumbnailPath String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  finishedProduct FinishedProduct? @relation(fields: [entityId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([entityId, isPrimary])
+  @@map("media_files")
+}
+
+// ============================================
+// CHANNEL-SPECIFIC PRODUCT DATA
+// ============================================
+
+// Amazon Product Data
+model ProductAmazon {
+  id                String @id @default(cuid())
+  finishedProductId String @unique
+
+  // Amazon-specific fields
+  asin                   String?
+  parentAsin             String?
+  itemName               String?
+  brandName              String?
+  externalProductId      String?
+  recommendedBrowseNodes String?
+  modelName              String?
+  manufacturer           String?
+  productDescription     String?
+  bulletPoints           Json?
+  genericKeywords        String?
+  style                  String?
+  departmentName         String?
+  ageRangeDescription    String?
+  material               String?
+  fabricType             String?
+  numberOfItems          Int?
+  itemTypeName           String?
+  specialSize            String?
+  colorMap               String?
+  color                  String?
+  size                   String?
+  sizeMap                String?
+
+  // Dimensions & Weight
+  itemLength         Decimal? @db.Decimal(10, 2)
+  itemWidth          Decimal? @db.Decimal(10, 2)
+  itemHeight         Decimal? @db.Decimal(10, 2)
+  itemDimensionsUnit String?
+  itemWeight         Decimal? @db.Decimal(10, 2)
+  itemWeightUnit     String?
+
+  // Package Dimensions
+  packageLength         Decimal? @db.Decimal(10, 2)
+  packageWidth          Decimal? @db.Decimal(10, 2)
+  packageHeight         Decimal? @db.Decimal(10, 2)
+  packageDimensionsUnit String?
+  packageWeight         Decimal? @db.Decimal(10, 2)
+  packageWeightUnit     String?
+
+  // Pricing
+  standardPrice Decimal? @db.Decimal(15, 2)
+  currency      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_amazon")
+}
+
+// Myntra Product Data
+model ProductMyntra {
+  id                String   @id @default(cuid())
+  finishedProductId String   @unique
+  myntraSku         String?
+  productName       String?
+  brandName         String?
+  category          String?
+  color             String?
+  size              String?
+  price             Decimal? @db.Decimal(15, 2)
+  mrp               Decimal? @db.Decimal(15, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_myntra")
+}
+
+// Shopify Product Data
+model ProductShopify {
+  id                String   @id @default(cuid())
+  finishedProductId String   @unique
+  shopifyProductId  String?
+  shopifyVariantId  String?
+  handle            String?
+  productName       String?
+  variantName       String?
+  price             Decimal? @db.Decimal(15, 2)
+  compareAtPrice    Decimal? @db.Decimal(15, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_shopify")
+}
+
+// Flipkart Product Data
+model ProductFlipkart {
+  id                String   @id @default(cuid())
+  finishedProductId String   @unique
+  flipkartSku       String?
+  productName       String?
+  brandName         String?
+  category          String?
+  price             Decimal? @db.Decimal(15, 2)
+  mrp               Decimal? @db.Decimal(15, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_flipkart")
+}
+
+// Nykaa Product Data
+model ProductNykaa {
+  id                String   @id @default(cuid())
+  finishedProductId String   @unique
+  nykaaSku          String?
+  productName       String?
+  brandName         String?
+  category          String?
+  price             Decimal? @db.Decimal(15, 2)
+  mrp               Decimal? @db.Decimal(15, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_nykaa")
 }

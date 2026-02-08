@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-04 (Real-time form validation added)
+> **Last Updated:** 2026-02-06 (Phase 3A Media Management implemented)
 > **Purpose:** This file contains the complete project context for AI assistants. Update this file after every significant change.
 
 ---
@@ -79,10 +79,22 @@ src/
 │   │   │   ├── new/page.tsx       # Create page
 │   │   │   └── [id]/page.tsx      # Edit/detail page
 │   │   ├── admin/
-│   │   │   └── users/
-│   │   │       ├── page.tsx       # User list (Super Admin)
-│   │   │       ├── new/page.tsx   # Create user
-│   │   │       └── [id]/page.tsx  # Edit user
+│   │   │   ├── users/
+│   │   │   │   ├── page.tsx       # User list (Super Admin)
+│   │   │   │   ├── new/page.tsx   # Create user
+│   │   │   │   └── [id]/page.tsx  # Edit user
+│   │   │   └── settings/
+│   │   │       ├── page.tsx       # Settings landing
+│   │   │       ├── sales-channels/page.tsx
+│   │   │       ├── entities/page.tsx
+│   │   │       └── company/page.tsx
+│   │   ├── products/
+│   │   │   ├── page.tsx           # Products landing (5 library cards)
+│   │   │   ├── styles/            # Style library
+│   │   │   ├── fabrics/           # Fabric library
+│   │   │   ├── raw-materials/     # Raw Material library
+│   │   │   ├── packaging/         # Packaging library
+│   │   │   └── finished/          # Finished Products library
 │   │   ├── profile/
 │   │   │   └── page.tsx           # User profile & change password
 │   │   └── ...
@@ -101,9 +113,23 @@ src/
 │   │   │           └── [pricingId]/route.ts
 │   │   ├── users/
 │   │   ├── me/
-│   │   └── profile/
-│   │       ├── route.ts           # GET/PUT profile
-│   │       └── change-password/route.ts
+│   │   ├── profile/
+│   │   │   ├── route.ts           # GET/PUT profile
+│   │   │   └── change-password/route.ts
+│   │   ├── admin/settings/        # Admin settings API
+│   │   │   ├── sales-channels/
+│   │   │   ├── entities/
+│   │   │   └── payment-modes/
+│   │   └── product-info/          # Product Information API
+│   │       ├── styles/
+│   │       ├── fabrics/
+│   │       ├── raw-materials/
+│   │       ├── packaging/
+│   │       └── finished/
+│   │           └── [id]/
+│   │               └── media/     # Media upload API
+│   │                   ├── route.ts
+│   │                   └── [mediaId]/route.ts
 │   └── layout.tsx
 ├── components/
 │   ├── ui/                        # shadcn/ui components
@@ -118,6 +144,8 @@ src/
 │   │   ├── tooltip.tsx
 │   │   ├── dialog.tsx
 │   │   ├── alert.tsx
+│   │   ├── tabs.tsx               # For Admin Settings
+│   │   ├── accordion.tsx          # For expandable sections
 │   │   └── ...
 │   ├── shared/                    # Reusable components
 │   │   ├── page-header.tsx
@@ -126,6 +154,13 @@ src/
 │   │   ├── confirm-dialog.tsx
 │   │   ├── status-badge.tsx
 │   │   └── vendor-selector.tsx    # PO vendor dropdown with purchase type filter
+│   ├── products/                  # Product-specific components
+│   │   └── media-upload.tsx       # Drag-and-drop media upload with gallery
+│   ├── settings/                  # Admin Settings components
+│   │   ├── SalesChannelsTab.tsx
+│   │   ├── EntitiesTab.tsx
+│   │   ├── CompanyInfoTab.tsx
+│   │   └── index.ts
 │   ├── tables/
 │   │   └── data-table.tsx         # Generic data table
 │   └── layout/
@@ -136,6 +171,7 @@ src/
 │   ├── prisma.ts                  # Prisma client singleton
 │   ├── utils.ts                   # cn() utility
 │   ├── constants.ts
+│   ├── media-upload.ts            # Client-side media upload utility
 │   └── supabase/
 │       ├── client.ts              # Browser client
 │       ├── server.ts              # Server client
@@ -143,7 +179,8 @@ src/
 ├── services/                      # Business logic layer
 │   ├── supplier-service.ts
 │   ├── user-service.ts
-│   ├── product-service.ts
+│   ├── settings-service.ts        # Admin settings (sales channels, entities, payment modes)
+│   ├── product-info-service.ts    # Product Information (styles, fabrics, raw materials, packaging, finished)
 │   ├── po-service.ts
 │   ├── inventory-service.ts
 │   ├── production-service.ts
@@ -151,7 +188,8 @@ src/
 ├── validators/                    # Zod schemas
 │   ├── supplier.ts
 │   ├── user.ts
-│   ├── product.ts
+│   ├── settings.ts                # Admin settings validation
+│   ├── product-info.ts            # Product Information validation
 │   ├── purchase-order.ts
 │   ├── grn.ts
 │   ├── production.ts
@@ -160,6 +198,25 @@ src/
     ├── use-permissions.ts
     ├── use-auth.ts                # Auth state hook
     └── use-toast.ts               # Toast notifications
+
+scripts/
+└── migrations/                    # Data migration scripts
+    ├── migrate-product-data.ts    # Main orchestrator
+    ├── 01-migrate-styles.ts       # Extract & create styles
+    ├── 02-migrate-fabrics.ts      # Migrate fabrics
+    ├── 03-migrate-raw-materials.ts
+    ├── 04-migrate-packaging.ts
+    ├── 05-migrate-products.ts     # Migrate finished products
+    ├── validate-migration.ts      # Validation script
+    ├── rollback-migration.ts      # Rollback script
+    └── utils/
+        └── csv-parser.ts          # CSV parsing utilities
+
+data/                              # CSV data files for migration
+├── fabric_items_rows.csv
+├── raw_material_items_rows.csv
+├── packaging_items_rows.csv
+└── finished_items_rows.csv
 ```
 
 ---
@@ -270,7 +327,7 @@ model SupplierPricing {
 }
 ```
 
-### Product Tables
+### Product Tables (Legacy)
 
 ```prisma
 model Product {
@@ -294,6 +351,196 @@ model ProductCategory {
   name     String
   level    Int     @default(1)
   parentId String?
+}
+```
+
+### Product Information Tables (New)
+
+**Style Library** - Templates with garment measurements:
+```prisma
+model Style {
+  id          String   @id @default(cuid())
+  tenantId    String
+  styleCode   String   // e.g., STY-001
+  styleName   String
+  gender      String?
+  hsnCode     String?
+  gstRatePct  Decimal  @default(5.00)
+  // 50+ measurement fields: chest32-50, length32-50, waist32-50, shoulder, neckDepth, armhole, sleeveLength
+  notes       String?
+  status      String   @default("active")
+
+  finishedProducts FinishedProduct[]
+  @@unique([tenantId, styleCode])
+}
+```
+
+**Fabric Library** - Fabrics with supplier relation:
+```prisma
+model Fabric {
+  id              String   @id @default(cuid())
+  tenantId        String
+  fabricSku       String   // e.g., FAB-001
+  material        String
+  color           String
+  design          String?
+  work            String?
+  widthCm         Decimal?
+  weightPerMeter  Decimal?
+  costAmount      Decimal
+  gstRatePct      Decimal  @default(5.00)
+  hsnCode         String?
+  uom             String   @default("Meters")
+  supplierId      String?
+  notes           String?
+  status          String   @default("active")
+
+  supplier         Supplier?
+  finishedProducts FinishedProduct[]
+  @@unique([tenantId, fabricSku])
+}
+```
+
+**Raw Material Library** - Production inputs:
+```prisma
+model RawMaterial {
+  id               String   @id @default(cuid())
+  tenantId         String
+  rmSku            String   // e.g., RM-001
+  rmType           String   // Button, Zipper, Thread, etc.
+  color            String?
+  measurementUnit  String   // Pieces, Meters, Grams
+  unitsPerQuantity Int
+  costPerSku       Decimal
+  gstRatePct       Decimal  @default(5.00)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String   @default("active")
+
+  supplier Supplier?
+  @@unique([tenantId, rmSku])
+}
+```
+
+**Packaging Library** - Packaging materials:
+```prisma
+model Packaging {
+  id               String   @id @default(cuid())
+  tenantId         String
+  pkgSku           String   // e.g., PKG-001
+  pkgType          String   // Box, Polybag, etc.
+  description      String?
+  channel          String?  // Amazon, Myntra, etc.
+  dimensions       String?
+  measurementUnit  String
+  unitsPerQuantity Int
+  costPerUnit      Decimal
+  gstRatePct       Decimal  @default(5.00)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String   @default("active")
+
+  supplier Supplier?
+  @@unique([tenantId, pkgSku])
+}
+```
+
+**Finished Product Library** - Sellable products (Style + Fabric):
+```prisma
+model FinishedProduct {
+  id              String   @id @default(cuid())
+  tenantId        String
+  parentSku       String
+  childSku        String   // Unique variant SKU
+  styleId         String
+  fabricId        String
+  entityId        String?
+  title           String
+  color           String
+  size            String
+  costAmount      Decimal
+  sellingPrice    Decimal?
+  mrp             Decimal?
+  gstRatePct      Decimal  @default(5.00)
+  currency        String   @default("INR")
+  sellingChannels Json     @default("[]")  // Array of channel codes
+  notes           String?
+  status          String   @default("active")
+
+  style  Style
+  fabric Fabric
+  entity Entity?
+  media  MediaFile[]
+  // Channel-specific data relations
+  amazonData  ProductAmazon?
+  myntraData  ProductMyntra?
+  shopifyData ProductShopify?
+  flipkartData ProductFlipkart?
+  nykaaData   ProductNykaa?
+
+  @@unique([tenantId, childSku])
+}
+```
+
+**Media File** - Product images and videos:
+```prisma
+model MediaFile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  entityType  String   // 'finished_product', 'style', etc.
+  entityId    String   // ID of the related entity
+  filePath    String   // Path in Supabase storage
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  fileType    String   // 'image' or 'video'
+  isPrimary   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  width       Int?
+  height      Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  finishedProduct FinishedProduct? @relation(...)
+}
+```
+
+### Admin Settings Tables
+
+```prisma
+model SalesChannel {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  code      String   // AMAZON, MYNTRA, etc.
+  isActive  Boolean  @default(true)
+
+  @@unique([tenantId, code])
+}
+
+model Entity {
+  id           String        @id @default(cuid())
+  tenantId     String
+  name         String
+  code         String
+  gstNumber    String?
+  address      String?
+  isActive     Boolean       @default(true)
+  paymentModes PaymentMode[]
+
+  @@unique([tenantId, code])
+}
+
+model PaymentMode {
+  id              String  @id @default(cuid())
+  entityId        String
+  bankName        String
+  accountNumber   String
+  ifscCode        String
+  upiId           String?
+  isPrimary       Boolean @default(false)
 }
 ```
 
@@ -460,10 +707,64 @@ export async function createClient() {
 - Supply Categories - tag suppliers with purchase types they can provide
 - VendorSelector component for filtering suppliers by purchase type in PO module
 
-### Slice 3: Product Management 🔲 (Not Started)
-- Product catalog CRUD
-- Category hierarchy
-- HSN codes, GST rates
+### Slice 2.5: Admin Settings ✅
+- **Validators:** `src/validators/settings.ts`
+- **Service:** `src/services/settings-service.ts`
+- **API Routes:** 6 endpoints under `/api/admin/settings/`
+- **Frontend:** 4 pages (landing, sales-channels, entities, company)
+
+**Features:**
+- Sales Channels CRUD (Amazon, Myntra, Shopify, etc.)
+- Entities CRUD (business entities with GST)
+- Payment Modes per entity (bank accounts, UPI)
+- Company Information management
+- Tab-based UI with dialogs for forms
+
+### Slice 3: Product Information (Phase 1) ✅
+- **Validators:** `src/validators/product-info.ts`
+- **Service:** `src/services/product-info-service.ts`
+- **API Routes:** 10 endpoints under `/api/product-info/`
+- **Frontend:** 16 pages (landing + 5 libraries × 3 pages each)
+
+**5 Product Libraries:**
+1. **Style Library** - Garment templates with 50+ measurement fields
+2. **Fabric Library** - Fabrics with supplier relation
+3. **Raw Material Library** - Production inputs (buttons, zippers, etc.)
+4. **Packaging Library** - Packaging materials by channel
+5. **Finished Products** - Sellable products (Style + Fabric combinations)
+
+**Features:**
+- Full CRUD for all 5 libraries
+- Supplier dropdowns for Fabric, Raw Material, Packaging
+- Style/Fabric/Entity dropdowns for Finished Products
+- Sales channel checkboxes for Finished Products
+- Search functionality on all list pages
+- Status badges (active/inactive/draft)
+
+**Phase 1 Scope (Completed):**
+- Database models for all libraries
+- Basic CRUD operations
+- List/Create/Edit pages for all libraries
+
+**Phase 2: Data Migration (Completed):**
+- CSV parsing utilities
+- Migration scripts for all 5 libraries
+- Validation and rollback scripts
+- 100 finished products migrated
+
+**Phase 3A: Media Management (Completed):**
+- MediaFile database model
+- Media API routes (CRUD)
+- MediaUpload component with drag-and-drop
+- Supabase Storage integration
+- Primary image selection
+- File validation (size/type limits)
+
+**Not Yet Implemented (Future):**
+- Channel-specific field UIs (Amazon, Myntra fields)
+- CSV bulk import for new products
+- Bulk operations
+- Drag-and-drop reordering for media
 
 ### Slice 4: Purchase Orders 🔲 (Not Started)
 - Multi-type POs (finished, fabric, raw material, etc.)
@@ -529,6 +830,59 @@ export async function createClient() {
 | GET | `/api/profile` | Get current user profile |
 | PUT | `/api/profile` | Update profile (name) |
 | POST | `/api/profile/change-password` | Change password |
+
+### Admin Settings API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/settings/sales-channels` | List sales channels |
+| POST | `/api/admin/settings/sales-channels` | Create sales channel |
+| GET | `/api/admin/settings/sales-channels/[id]` | Get sales channel |
+| PUT | `/api/admin/settings/sales-channels/[id]` | Update sales channel |
+| DELETE | `/api/admin/settings/sales-channels/[id]` | Deactivate sales channel |
+| GET | `/api/admin/settings/entities` | List entities |
+| POST | `/api/admin/settings/entities` | Create entity |
+| GET | `/api/admin/settings/entities/[id]` | Get entity with payment modes |
+| PUT | `/api/admin/settings/entities/[id]` | Update entity |
+| DELETE | `/api/admin/settings/entities/[id]` | Deactivate entity |
+| POST | `/api/admin/settings/entities/[id]/payment-modes` | Add payment mode |
+| PUT | `/api/admin/settings/payment-modes/[id]` | Update payment mode |
+| DELETE | `/api/admin/settings/payment-modes/[id]` | Delete payment mode |
+
+### Product Information API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/product-info/styles` | List styles |
+| POST | `/api/product-info/styles` | Create style |
+| GET | `/api/product-info/styles/[id]` | Get style |
+| PUT | `/api/product-info/styles/[id]` | Update style |
+| DELETE | `/api/product-info/styles/[id]` | Deactivate style |
+| GET | `/api/product-info/fabrics` | List fabrics (includes supplier) |
+| POST | `/api/product-info/fabrics` | Create fabric |
+| GET | `/api/product-info/fabrics/[id]` | Get fabric |
+| PUT | `/api/product-info/fabrics/[id]` | Update fabric |
+| DELETE | `/api/product-info/fabrics/[id]` | Deactivate fabric |
+| GET | `/api/product-info/raw-materials` | List raw materials |
+| POST | `/api/product-info/raw-materials` | Create raw material |
+| GET | `/api/product-info/raw-materials/[id]` | Get raw material |
+| PUT | `/api/product-info/raw-materials/[id]` | Update raw material |
+| DELETE | `/api/product-info/raw-materials/[id]` | Deactivate raw material |
+| GET | `/api/product-info/packaging` | List packaging |
+| POST | `/api/product-info/packaging` | Create packaging |
+| GET | `/api/product-info/packaging/[id]` | Get packaging |
+| PUT | `/api/product-info/packaging/[id]` | Update packaging |
+| DELETE | `/api/product-info/packaging/[id]` | Deactivate packaging |
+| GET | `/api/product-info/finished` | List finished products (includes style, fabric, entity) |
+| POST | `/api/product-info/finished` | Create finished product |
+| GET | `/api/product-info/finished/[id]` | Get finished product |
+| PUT | `/api/product-info/finished/[id]` | Update finished product |
+| DELETE | `/api/product-info/finished/[id]` | Deactivate finished product |
+| GET | `/api/product-info/finished/[id]/media` | List media for product |
+| POST | `/api/product-info/finished/[id]/media` | Add media to product |
+| GET | `/api/product-info/finished/[id]/media/[mediaId]` | Get single media |
+| PATCH | `/api/product-info/finished/[id]/media/[mediaId]` | Update media (isPrimary, sortOrder) |
+| DELETE | `/api/product-info/finished/[id]/media/[mediaId]` | Delete media from product and storage |
 
 ---
 
@@ -622,6 +976,73 @@ The sidebar (`src/components/layout/sidebar.tsx`) renders navigation based on `N
 - At least one lowercase letter
 - At least one number
 - At least one special character (@$!%*?&#)
+
+### Admin Settings Module (Super Admin Only)
+
+**Landing Page** (`/admin/settings`):
+- Cards linking to each settings section
+- Sales Channels, Entities, Company Information
+
+**Sales Channels Page** (`/admin/settings/sales-channels`):
+- Table with all channels (name, code, status)
+- Add/Edit dialogs
+- Activate/Deactivate actions
+
+**Entities Page** (`/admin/settings/entities`):
+- Table with entities (name, code, GST, payment modes count)
+- Add/Edit entity dialogs
+- Expandable payment modes section
+- Add/Edit/Delete payment modes
+
+**Company Info Page** (`/admin/settings/company`):
+- Company details form
+- Logo upload (placeholder)
+
+### Product Information Module
+
+**Landing Page** (`/products`):
+- 5 library cards with icons and descriptions
+- Links to: Finished Products, Styles, Fabrics, Raw Materials, Packaging
+
+**Style Library** (`/products/styles`):
+- List page with search by code/name
+- Create/Edit forms with:
+  - Basic info (styleCode, styleName, gender, HSN, GST)
+  - Measurements organized by size (32-50)
+  - Fields: chest, length, waist, shoulder, neckDepth, armhole, sleeveLength
+
+**Fabric Library** (`/products/fabrics`):
+- List page with search, supplier display
+- Create/Edit forms with:
+  - Basic info (fabricSku, material, color, design, work)
+  - Supplier dropdown
+  - Specifications (width, weight, UOM)
+  - Pricing (cost, GST, HSN)
+
+**Raw Material Library** (`/products/raw-materials`):
+- List page with search, supplier display
+- Create/Edit forms with:
+  - Basic info (rmSku, type, color)
+  - Supplier dropdown
+  - Quantity (measurement unit, units per quantity)
+  - Pricing (cost per SKU, GST, HSN)
+
+**Packaging Library** (`/products/packaging`):
+- List page with search, channel/supplier display
+- Create/Edit forms with:
+  - Basic info (pkgSku, type, channel, description)
+  - Supplier dropdown
+  - Specifications (dimensions, measurement unit)
+  - Pricing (cost per unit, GST, HSN)
+
+**Finished Products Library** (`/products/finished`):
+- List page with search, style/fabric display
+- Create/Edit forms with:
+  - SKU info (parentSku, childSku)
+  - Product details (title, color, size)
+  - Relations (Style dropdown, Fabric dropdown, Entity dropdown)
+  - Pricing (cost, selling price, MRP, GST)
+  - Selling Channels (checkboxes from sales channels)
 
 ---
 
@@ -745,6 +1166,48 @@ function PurchaseOrderForm() {
 - `disabled`: Disable the selector
 - `required`: Show required indicator
 
+### MediaUpload Component
+
+For uploading product images and videos with drag-and-drop support:
+
+```typescript
+import { MediaUpload } from '@/components/products/media-upload'
+
+function ProductEditForm({ productId }: { productId: string }) {
+  const [media, setMedia] = useState<MediaFile[]>([])
+
+  return (
+    <MediaUpload
+      productId={productId}
+      existingMedia={media}
+      onMediaChange={setMedia}
+      maxImages={14}
+      maxVideos={1}
+    />
+  )
+}
+```
+
+**Props:**
+- `productId` (required): The finished product ID
+- `existingMedia`: Array of existing media files
+- `onMediaChange`: Callback when media changes (add/delete/set primary)
+- `maxImages`: Maximum images allowed (default: 14)
+- `maxVideos`: Maximum videos allowed (default: 1)
+
+**Features:**
+- Drag-and-drop file upload
+- Image preview grid
+- Set primary image (star button)
+- Delete media
+- File validation (size, type)
+- Upload progress indicator
+- Error handling
+
+**Supported Formats:**
+- Images: JPG, PNG, WEBP (max 5MB each)
+- Videos: MP4, MOV (max 50MB)
+
 ### Dynamic Route Params (Next.js 14/15)
 
 **Option 1: useParams() hook (Recommended for client components)**
@@ -783,17 +1246,95 @@ export default function Page({
 - [x] UI component library (shadcn/ui)
 - [x] Slice 1: User Management
 - [x] Slice 2: Supplier Management
+- [x] Slice 2.5: Admin Settings
+- [x] Slice 3: Product Information (Phase 1)
+- [x] Slice 3: Product Information (Phase 2 - Data Migration)
+- [x] Slice 3: Product Information (Phase 3A - Media Management)
 
 ### In Progress
-- [ ] Testing Slice 2 implementation
+- [ ] Testing Phase 3A media upload in frontend
 
 ### Next Up
-- [ ] Slice 3: Product Management
+- [ ] Slice 3 Phase 3B: Channel-specific UIs (Amazon, Myntra fields)
+- [ ] Slice 3 Phase 3C: Bulk operations, CSV import
 - [ ] Slice 4: Purchase Orders
 - [ ] Slice 5: GRN & Inventory
 
 ### Known Issues
 - None currently documented
+
+### Recently Added (2026-02-06)
+- **Phase 3A: Media Management:**
+  - Created `MediaUpload` component (`src/components/products/media-upload.tsx`)
+    - Drag-and-drop file upload with react-dropzone
+    - Image/video preview grid
+    - Set primary image functionality
+    - Delete media functionality
+    - File validation (size, type limits)
+    - Upload progress indicator
+  - Created `mediaUploader` utility (`src/lib/media-upload.ts`)
+    - `uploadFile()` - Upload to Supabase Storage
+    - `deleteFile()` - Remove from storage
+    - `validateFile()` - Check size and type
+    - `getPublicUrl()` - Get public URL for display
+  - Created media API routes:
+    - `GET /api/product-info/finished/[id]/media` - List all media
+    - `POST /api/product-info/finished/[id]/media` - Add new media
+    - `GET /api/product-info/finished/[id]/media/[mediaId]` - Get single media
+    - `PATCH /api/product-info/finished/[id]/media/[mediaId]` - Update (isPrimary, sortOrder)
+    - `DELETE /api/product-info/finished/[id]/media/[mediaId]` - Delete from storage and DB
+  - Integrated MediaUpload into finished product edit page
+  - Limits: 14 images (5MB each), 1 video (50MB)
+  - Supported formats: JPG, PNG, WEBP for images; MP4, MOV for video
+  - **Manual Setup Required:** Create Supabase Storage bucket `product-media` with public access policy
+
+- **Phase 2: Data Migration Scripts:**
+  - Created migration infrastructure in `scripts/migrations/`
+  - CSV parser utility with data cleaning functions
+  - Individual migration scripts for each library:
+    - `01-migrate-styles.ts` - Extracts unique styles from finished items
+    - `02-migrate-fabrics.ts` - Migrates fabric library
+    - `03-migrate-raw-materials.ts` - Migrates raw materials
+    - `04-migrate-packaging.ts` - Migrates packaging items
+    - `05-migrate-products.ts` - Migrates finished products with style/fabric relations
+  - Main orchestrator: `migrate-product-data.ts`
+  - Validation script: `validate-migration.ts`
+  - Rollback script: `rollback-migration.ts`
+  - npm scripts added:
+    - `npm run migrate:products` - Run full migration
+    - `npm run migrate:validate` - Validate migration results
+    - `npm run migrate:rollback` - Rollback migration (requires CONFIRM_ROLLBACK=yes)
+  - Migration results (final):
+    - 8 styles created
+    - 44 fabrics created (31 original + 13 added for missing combinations)
+    - 19 raw materials created
+    - 17 packaging items created
+    - 100 finished products created (all migrated successfully)
+  - Added `add-missing-fabrics.ts` script to create 13 missing fabric combinations
+
+### Recently Added (2026-02-05)
+- **Product Information Module (Phase 1):**
+  - Database models: Style, Fabric, RawMaterial, Packaging, FinishedProduct, MediaFile
+  - Channel-specific tables: ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
+  - Validators for all 5 product libraries
+  - Services with CRUD operations for all libraries
+  - API routes: 10 endpoints under `/api/product-info/`
+  - Frontend pages: 16 pages total
+    - Products landing page with 5 library cards
+    - Style library: list, create, edit (with 50+ measurement fields)
+    - Fabric library: list, create, edit (with supplier dropdown)
+    - Raw Material library: list, create, edit (with supplier dropdown)
+    - Packaging library: list, create, edit (with supplier dropdown)
+    - Finished Products: list, create, edit (with style/fabric/entity/channels)
+
+- **Admin Settings Module:**
+  - Database models: SalesChannel, Entity, PaymentMode
+  - Validators and services for settings CRUD
+  - API routes: 6 endpoints under `/api/admin/settings/`
+  - Frontend pages: landing, sales-channels, entities, company
+  - Sales channel management (CRUD)
+  - Entity management with payment modes
+  - UI components: Tabs, Accordion (added via shadcn)
 
 ### Recently Added (2026-02-04)
 - **Real-time Form Validation for Supplier Forms:**
@@ -841,6 +1382,11 @@ DIRECT_URL=postgresql://...
 NEXT_PUBLIC_SUPABASE_URL=https://...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
+
+### Build Configuration Notes
+- `scripts/` directory is excluded from TypeScript compilation in `tsconfig.json`
+- Migration scripts are run separately with `ts-node` via npm scripts
+- Supabase Storage bucket `product-media` must be created manually with public read access
 
 ---
 

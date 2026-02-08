@@ -4,7 +4,10 @@
       "Bash(npx prisma db push:*)",
       "Bash(npx prisma generate:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(set:*)",
+      "Bash(npm run migrate:products:*)",
+      "Bash(npx cross-env:*)"
     ]
   }
 }
