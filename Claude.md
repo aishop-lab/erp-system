@@ -1,68 +1,12 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-06 (Phase 3A Media Management implemented)
-> **Purpose:** This file contains the complete project context for AI assistants. Update this file after every significant change.
+> **Last Updated:** 2026-02-09 (Phase 3A Media Management complete)
 
----
+## Overview
 
-## Table of Contents
-1. [Project Overview](#project-overview)
-2. [Tech Stack](#tech-stack)
-3. [Project Structure](#project-structure)
-4. [Database Schema](#database-schema)
-5. [Authentication](#authentication)
-6. [Implemented Slices](#implemented-slices)
-7. [API Endpoints](#api-endpoints)
-8. [Frontend Pages](#frontend-pages)
-9. [Key Patterns & Conventions](#key-patterns--conventions)
-10. [Current State & Next Steps](#current-state--next-steps)
+Multi-tenant ERP system for managing users, suppliers, products, purchase orders, inventory, production, and finance. All data scoped by `tenantId`.
 
----
-
-## Project Overview
-
-This is a multi-tenant ERP (Enterprise Resource Planning) system built for managing:
-- **Users & Permissions** - Role-based access control per module
-- **Suppliers** - Vendor management with contacts and pricing catalogs
-- **Products** - SKU catalog with categories
-- **Purchase Orders** - Multi-type POs with approval workflows
-- **Inventory** - Batch tracking, GRN, stock movements
-- **Production** - In-house and job work production tracking
-- **Finance** - Payments, settlements, customer invoices
-
-### Multi-Tenancy
-- All data is scoped by `tenantId`
-- Users belong to a single tenant
-- API routes always filter by the authenticated user's tenant
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Framework | Next.js 14 (App Router) |
-| Language | TypeScript |
-| Database | PostgreSQL (Supabase) |
-| ORM | Prisma |
-| Auth | Supabase Auth |
-| UI Components | shadcn/ui + Radix UI |
-| Styling | Tailwind CSS |
-| State | Zustand |
-| Forms | React Hook Form + Zod |
-| Tables | TanStack Table |
-
-### Key Dependencies
-```json
-{
-  "@prisma/client": "^5.10.0",
-  "@supabase/ssr": "^0.1.0",
-  "@supabase/supabase-js": "^2.39.7",
-  "@tanstack/react-table": "^8.13.0",
-  "zod": "^3.22.4",
-  "zustand": "^4.5.1"
-}
-```
+**Tech Stack:** Next.js 14 (App Router), TypeScript, PostgreSQL (Supabase), Prisma, Supabase Auth, shadcn/ui, Tailwind CSS, Zod, TanStack Table
 
 ---
 
@@ -71,1311 +15,165 @@ This is a multi-tenant ERP (Enterprise Resource Planning) system built for manag
 ```
 src/
 ├── app/
-│   ├── (auth)/                    # Auth pages (login, etc.)
-│   ├── (dashboard)/               # Protected dashboard pages
-│   │   ├── dashboard/
+│   ├── (auth)/login/
+│   ├── (dashboard)/
+│   │   ├── admin/users/, admin/settings/
 │   │   ├── suppliers/
-│   │   │   ├── page.tsx           # List page
-│   │   │   ├── new/page.tsx       # Create page
-│   │   │   └── [id]/page.tsx      # Edit/detail page
-│   │   ├── admin/
-│   │   │   ├── users/
-│   │   │   │   ├── page.tsx       # User list (Super Admin)
-│   │   │   │   ├── new/page.tsx   # Create user
-│   │   │   │   └── [id]/page.tsx  # Edit user
-│   │   │   └── settings/
-│   │   │       ├── page.tsx       # Settings landing
-│   │   │       ├── sales-channels/page.tsx
-│   │   │       ├── entities/page.tsx
-│   │   │       └── company/page.tsx
-│   │   ├── products/
-│   │   │   ├── page.tsx           # Products landing (5 library cards)
-│   │   │   ├── styles/            # Style library
-│   │   │   ├── fabrics/           # Fabric library
-│   │   │   ├── raw-materials/     # Raw Material library
-│   │   │   ├── packaging/         # Packaging library
-│   │   │   └── finished/          # Finished Products library
-│   │   ├── profile/
-│   │   │   └── page.tsx           # User profile & change password
-│   │   └── ...
-│   ├── api/                       # API routes
-│   │   ├── suppliers/
-│   │   │   ├── route.ts           # GET (list), POST (create)
-│   │   │   ├── active/route.ts    # GET active suppliers
-│   │   │   └── [id]/
-│   │   │       ├── route.ts       # GET, PUT, DELETE
-│   │   │       ├── activate/route.ts
-│   │   │       ├── contacts/
-│   │   │       │   ├── route.ts
-│   │   │       │   └── [contactId]/route.ts
-│   │   │       └── pricing/
-│   │   │           ├── route.ts
-│   │   │           └── [pricingId]/route.ts
-│   │   ├── users/
-│   │   ├── me/
-│   │   ├── profile/
-│   │   │   ├── route.ts           # GET/PUT profile
-│   │   │   └── change-password/route.ts
-│   │   ├── admin/settings/        # Admin settings API
-│   │   │   ├── sales-channels/
-│   │   │   ├── entities/
-│   │   │   └── payment-modes/
-│   │   └── product-info/          # Product Information API
-│   │       ├── styles/
-│   │       ├── fabrics/
-│   │       ├── raw-materials/
-│   │       ├── packaging/
-│   │       └── finished/
-│   │           └── [id]/
-│   │               └── media/     # Media upload API
-│   │                   ├── route.ts
-│   │                   └── [mediaId]/route.ts
-│   └── layout.tsx
+│   │   ├── products/{styles,fabrics,raw-materials,packaging,finished}/
+│   │   ├── inventory/, production/, finance/
+│   │   └── profile/
+│   └── api/
+│       ├── users/, me/, profile/
+│       ├── suppliers/[id]/{contacts,pricing}/
+│       ├── admin/settings/{sales-channels,entities,payment-modes}/
+│       └── product-info/{styles,fabrics,raw-materials,packaging,finished}/
+│           └── finished/[id]/media/[mediaId]/
 ├── components/
-│   ├── ui/                        # shadcn/ui components
-│   │   ├── button.tsx
-│   │   ├── input.tsx
-│   │   ├── card.tsx
-│   │   ├── table.tsx
-│   │   ├── select.tsx
-│   │   ├── checkbox.tsx
-│   │   ├── textarea.tsx
-│   │   ├── switch.tsx
-│   │   ├── tooltip.tsx
-│   │   ├── dialog.tsx
-│   │   ├── alert.tsx
-│   │   ├── tabs.tsx               # For Admin Settings
-│   │   ├── accordion.tsx          # For expandable sections
-│   │   └── ...
-│   ├── shared/                    # Reusable components
-│   │   ├── page-header.tsx
-│   │   ├── empty-state.tsx
-│   │   ├── loading-spinner.tsx
-│   │   ├── confirm-dialog.tsx
-│   │   ├── status-badge.tsx
-│   │   └── vendor-selector.tsx    # PO vendor dropdown with purchase type filter
-│   ├── products/                  # Product-specific components
-│   │   └── media-upload.tsx       # Drag-and-drop media upload with gallery
-│   ├── settings/                  # Admin Settings components
-│   │   ├── SalesChannelsTab.tsx
-│   │   ├── EntitiesTab.tsx
-│   │   ├── CompanyInfoTab.tsx
-│   │   └── index.ts
-│   ├── tables/
-│   │   └── data-table.tsx         # Generic data table
-│   └── layout/
-│       ├── sidebar.tsx
-│       ├── header.tsx
-│       └── nav-item.tsx
+│   ├── ui/                    # shadcn components
+│   ├── shared/                # page-header, loading-spinner, vendor-selector
+│   ├── products/media-upload.tsx
+│   └── layout/sidebar.tsx, header.tsx
 ├── lib/
-│   ├── prisma.ts                  # Prisma client singleton
-│   ├── utils.ts                   # cn() utility
-│   ├── constants.ts
-│   ├── media-upload.ts            # Client-side media upload utility
-│   └── supabase/
-│       ├── client.ts              # Browser client
-│       ├── server.ts              # Server client
-│       └── middleware.ts
-├── services/                      # Business logic layer
-│   ├── supplier-service.ts
-│   ├── user-service.ts
-│   ├── settings-service.ts        # Admin settings (sales channels, entities, payment modes)
-│   ├── product-info-service.ts    # Product Information (styles, fabrics, raw materials, packaging, finished)
-│   ├── po-service.ts
-│   ├── inventory-service.ts
-│   ├── production-service.ts
-│   └── finance-service.ts
-├── validators/                    # Zod schemas
-│   ├── supplier.ts
-│   ├── user.ts
-│   ├── settings.ts                # Admin settings validation
-│   ├── product-info.ts            # Product Information validation
-│   ├── purchase-order.ts
-│   ├── grn.ts
-│   ├── production.ts
-│   └── payment.ts
+│   ├── prisma.ts, utils.ts, constants.ts
+│   ├── media-upload.ts       # Supabase Storage upload utility
+│   └── supabase/{client,server}.ts
+├── services/                  # Business logic (supplier, user, settings, product-info)
+├── validators/                # Zod schemas
 └── hooks/
-    ├── use-permissions.ts
-    ├── use-auth.ts                # Auth state hook
-    └── use-toast.ts               # Toast notifications
 
-scripts/
-└── migrations/                    # Data migration scripts
-    ├── migrate-product-data.ts    # Main orchestrator
-    ├── 01-migrate-styles.ts       # Extract & create styles
-    ├── 02-migrate-fabrics.ts      # Migrate fabrics
-    ├── 03-migrate-raw-materials.ts
-    ├── 04-migrate-packaging.ts
-    ├── 05-migrate-products.ts     # Migrate finished products
-    ├── validate-migration.ts      # Validation script
-    ├── rollback-migration.ts      # Rollback script
-    └── utils/
-        └── csv-parser.ts          # CSV parsing utilities
-
-data/                              # CSV data files for migration
-├── fabric_items_rows.csv
-├── raw_material_items_rows.csv
-├── packaging_items_rows.csv
-└── finished_items_rows.csv
+scripts/migrations/            # Data migration scripts (excluded from build)
+data/                          # CSV files for migration
 ```
 
 ---
 
-## Database Schema
-
-### Core Tables
-
-```prisma
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  isActive  Boolean  @default(true)
-  // ... relations to all tenant-scoped tables
-}
-
-model User {
-  id             String   @id @default(cuid())
-  tenantId       String
-  supabaseUserId String?  @unique
-  email          String   @unique
-  name           String
-  role           String   @default("user")
-  isSuperAdmin   Boolean  @default(false)
-  isActive       Boolean  @default(true)
-  // ... relations
-}
-
-model UserPermission {
-  id              String          @id @default(cuid())
-  userId          String
-  module          String
-  subModule       String?
-  permissionLevel PermissionLevel // none, view, edit
-}
-```
-
-### Supply Categories (Purchase Types)
-
-Suppliers can be tagged with one or more of these categories:
-
-| Value | Label |
-|-------|-------|
-| `finished` | Finished Goods |
-| `fabric` | Fabric |
-| `raw_material` | Raw Material |
-| `packaging` | Packaging |
-| `corporate_assets` | Corporate Assets |
-| `samples` | Samples |
-| `influencer_samples` | Influencer Samples |
-| `transportation` | Transportation |
-| `advertisement` | Advertisement |
-| `office_expenses` | Office Expenses |
-| `software` | Software |
-| `feedback` | Feedback |
-| `misc` | Miscellaneous |
-| `customer_refunds` | Customer Refunds |
-
-### Supplier Tables
-
-```prisma
-model Supplier {
-  id                String   @id @default(cuid())
-  tenantId          String
-  name              String
-  code              String           // Auto-generated: SUP001, SUP002...
-  email             String?
-  phone             String?
-  address           String?
-  gstNumber         String?
-  panNumber         String?
-  bankName          String?
-  bankAccountNumber String?
-  bankIfscCode      String?
-  paymentTerms      String?
-  supplyCategories  String[] @default([])  // Purchase types this supplier can provide
-  isActive          Boolean  @default(true)
-
-  contacts          SupplierContact[]
-  pricings          SupplierPricing[]
-  purchaseOrders    PurchaseOrder[]
-  payments          Payment[]
-
-  @@unique([tenantId, code])
-}
-
-model SupplierContact {
-  id         String   @id @default(cuid())
-  supplierId String
-  name       String
-  email      String?
-  phone      String?
-  isPrimary  Boolean  @default(false)
-}
-
-model SupplierPricing {
-  id         String    @id @default(cuid())
-  supplierId String
-  productId  String
-  unitPrice  Decimal
-  currency   String    @default("INR")
-  minQty     Int?
-  validFrom  DateTime?
-  validTo    DateTime?
-
-  @@unique([supplierId, productId])
-}
-```
-
-### Product Tables (Legacy)
-
-```prisma
-model Product {
-  id          String   @id @default(cuid())
-  tenantId    String
-  sku         String
-  name        String
-  description String?
-  categoryId  String?
-  unit        String   @default("pcs")
-  hsnCode     String?
-  gstRate     Decimal?
-  isActive    Boolean  @default(true)
-
-  @@unique([tenantId, sku])
-}
-
-model ProductCategory {
-  id       String  @id @default(cuid())
-  tenantId String
-  name     String
-  level    Int     @default(1)
-  parentId String?
-}
-```
-
-### Product Information Tables (New)
-
-**Style Library** - Templates with garment measurements:
-```prisma
-model Style {
-  id          String   @id @default(cuid())
-  tenantId    String
-  styleCode   String   // e.g., STY-001
-  styleName   String
-  gender      String?
-  hsnCode     String?
-  gstRatePct  Decimal  @default(5.00)
-  // 50+ measurement fields: chest32-50, length32-50, waist32-50, shoulder, neckDepth, armhole, sleeveLength
-  notes       String?
-  status      String   @default("active")
-
-  finishedProducts FinishedProduct[]
-  @@unique([tenantId, styleCode])
-}
-```
-
-**Fabric Library** - Fabrics with supplier relation:
-```prisma
-model Fabric {
-  id              String   @id @default(cuid())
-  tenantId        String
-  fabricSku       String   // e.g., FAB-001
-  material        String
-  color           String
-  design          String?
-  work            String?
-  widthCm         Decimal?
-  weightPerMeter  Decimal?
-  costAmount      Decimal
-  gstRatePct      Decimal  @default(5.00)
-  hsnCode         String?
-  uom             String   @default("Meters")
-  supplierId      String?
-  notes           String?
-  status          String   @default("active")
-
-  supplier         Supplier?
-  finishedProducts FinishedProduct[]
-  @@unique([tenantId, fabricSku])
-}
-```
-
-**Raw Material Library** - Production inputs:
-```prisma
-model RawMaterial {
-  id               String   @id @default(cuid())
-  tenantId         String
-  rmSku            String   // e.g., RM-001
-  rmType           String   // Button, Zipper, Thread, etc.
-  color            String?
-  measurementUnit  String   // Pieces, Meters, Grams
-  unitsPerQuantity Int
-  costPerSku       Decimal
-  gstRatePct       Decimal  @default(5.00)
-  hsnCode          String?
-  supplierId       String?
-  notes            String?
-  status           String   @default("active")
-
-  supplier Supplier?
-  @@unique([tenantId, rmSku])
-}
-```
-
-**Packaging Library** - Packaging materials:
-```prisma
-model Packaging {
-  id               String   @id @default(cuid())
-  tenantId         String
-  pkgSku           String   // e.g., PKG-001
-  pkgType          String   // Box, Polybag, etc.
-  description      String?
-  channel          String?  // Amazon, Myntra, etc.
-  dimensions       String?
-  measurementUnit  String
-  unitsPerQuantity Int
-  costPerUnit      Decimal
-  gstRatePct       Decimal  @default(5.00)
-  hsnCode          String?
-  supplierId       String?
-  notes            String?
-  status           String   @default("active")
-
-  supplier Supplier?
-  @@unique([tenantId, pkgSku])
-}
-```
-
-**Finished Product Library** - Sellable products (Style + Fabric):
-```prisma
-model FinishedProduct {
-  id              String   @id @default(cuid())
-  tenantId        String
-  parentSku       String
-  childSku        String   // Unique variant SKU
-  styleId         String
-  fabricId        String
-  entityId        String?
-  title           String
-  color           String
-  size            String
-  costAmount      Decimal
-  sellingPrice    Decimal?
-  mrp             Decimal?
-  gstRatePct      Decimal  @default(5.00)
-  currency        String   @default("INR")
-  sellingChannels Json     @default("[]")  // Array of channel codes
-  notes           String?
-  status          String   @default("active")
-
-  style  Style
-  fabric Fabric
-  entity Entity?
-  media  MediaFile[]
-  // Channel-specific data relations
-  amazonData  ProductAmazon?
-  myntraData  ProductMyntra?
-  shopifyData ProductShopify?
-  flipkartData ProductFlipkart?
-  nykaaData   ProductNykaa?
-
-  @@unique([tenantId, childSku])
-}
-```
-
-**Media File** - Product images and videos:
-```prisma
-model MediaFile {
-  id          String   @id @default(cuid())
-  tenantId    String
-  entityType  String   // 'finished_product', 'style', etc.
-  entityId    String   // ID of the related entity
-  filePath    String   // Path in Supabase storage
-  fileName    String
-  fileSize    Int
-  mimeType    String
-  fileType    String   // 'image' or 'video'
-  isPrimary   Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  width       Int?
-  height      Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  finishedProduct FinishedProduct? @relation(...)
-}
-```
-
-### Admin Settings Tables
-
-```prisma
-model SalesChannel {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  code      String   // AMAZON, MYNTRA, etc.
-  isActive  Boolean  @default(true)
-
-  @@unique([tenantId, code])
-}
-
-model Entity {
-  id           String        @id @default(cuid())
-  tenantId     String
-  name         String
-  code         String
-  gstNumber    String?
-  address      String?
-  isActive     Boolean       @default(true)
-  paymentModes PaymentMode[]
-
-  @@unique([tenantId, code])
-}
-
-model PaymentMode {
-  id              String  @id @default(cuid())
-  entityId        String
-  bankName        String
-  accountNumber   String
-  ifscCode        String
-  upiId           String?
-  isPrimary       Boolean @default(false)
-}
-```
-
-### Purchase Order Tables
-
-```prisma
-model PurchaseOrder {
-  id               String      @id @default(cuid())
-  tenantId         String
-  poNumber         String
-  purchaseType     PurchaseType
-  supplierId       String?
-  entityId         String
-  status           POStatus    @default(draft)
-  entryMode        EntryMode
-  rawMaterialMode  RawMaterialMode?
-  totalAmount      Decimal
-  taxAmount        Decimal
-  grandTotal       Decimal
-  // ... audit fields
-
-  lineItems        POLineItem[]
-  freeTextItems    POLineItemFreetext[]
-  refundItems      POLineItemRefund[]
-  grns             GRN[]
-  payments         Payment[]
-}
-
-// POStatus: draft, pending_approval, approved, rejected,
-//           partially_received, goods_received, payment_pending, paid
-```
-
-### Inventory Tables
-
-```prisma
-model GRN {
-  id              String   @id @default(cuid())
-  tenantId        String
-  grnNumber       String
-  purchaseOrderId String
-  // ...
-  lineItems       GRNLineItem[]
-}
-
-model InventoryBatch {
-  id          String   @id @default(cuid())
-  tenantId    String
-  productId   String
-  batchNumber String
-  quantity    Int
-  costPrice   Decimal
-  expiryDate  DateTime?
-}
-
-model StockLedger {
-  id           String       @id @default(cuid())
-  tenantId     String
-  productId    String
-  batchId      String?
-  movementType MovementType
-  quantity     Int
-  referenceId  String?
-  referenceType String?
-}
-```
-
-### Key Enums
-
-```prisma
-enum PurchaseType {
-  finished, fabric, raw_material, packaging, corporate_assets,
-  samples, influencer_samples, transportation, advertisement,
-  office_expenses, software, feedback, misc, customer_refunds
-}
-
-enum POStatus {
-  draft, pending_approval, approved, approved_pending_rm_issuance,
-  rm_issued_pending_goods, rejected, partially_received,
-  goods_received, payment_pending, payment_approved, paid
-}
-
-enum EntryMode {
-  catalog, free_text, link_finished, special
-}
-
-enum MovementType {
-  grn, sale, sample, production_in, production_out,
-  rm_issued_to_vendor, adjustment_add, adjustment_reduce,
-  write_off, opening
-}
-
-enum PermissionLevel {
-  none, view, edit
-}
-```
-
----
-
-## Authentication
-
-### Supabase Auth Integration
-
-**Server-side auth check pattern:**
-```typescript
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
-
-export async function GET(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-
-  if (!authUser) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
-  })
-
-  if (!currentUser) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
-  }
-
-  // Use currentUser.tenantId for all queries
-}
-```
-
-**Supabase Server Client** (`src/lib/supabase/server.ts`):
-```typescript
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { /* cookie handlers */ } }
-  )
-}
-```
-
----
-
-## Implemented Slices
-
-### Slice 1: User Management + Permissions ✅
-- User CRUD (Super Admin only)
-- Per-module permission levels (none/view/edit)
-- Password management via Supabase Auth
-
-### Slice 2: Supplier Management ✅
-- **Validators:** `src/validators/supplier.ts`
-- **Service:** `src/services/supplier-service.ts`
-- **API Routes:** 8 endpoints under `/api/suppliers/`
-- **Frontend:** 3 pages (list, create, edit)
-
-**Features:**
-- Auto-generated supplier codes (SUP001, SUP002...)
-- Full CRUD with soft delete (active/inactive)
-- Contact management with primary designation
-- CSV pricing catalog upload
-- Search, filter, pagination
-- Supply Categories - tag suppliers with purchase types they can provide
-- VendorSelector component for filtering suppliers by purchase type in PO module
-
-### Slice 2.5: Admin Settings ✅
-- **Validators:** `src/validators/settings.ts`
-- **Service:** `src/services/settings-service.ts`
-- **API Routes:** 6 endpoints under `/api/admin/settings/`
-- **Frontend:** 4 pages (landing, sales-channels, entities, company)
-
-**Features:**
-- Sales Channels CRUD (Amazon, Myntra, Shopify, etc.)
-- Entities CRUD (business entities with GST)
-- Payment Modes per entity (bank accounts, UPI)
-- Company Information management
-- Tab-based UI with dialogs for forms
-
-### Slice 3: Product Information (Phase 1) ✅
-- **Validators:** `src/validators/product-info.ts`
-- **Service:** `src/services/product-info-service.ts`
-- **API Routes:** 10 endpoints under `/api/product-info/`
-- **Frontend:** 16 pages (landing + 5 libraries × 3 pages each)
-
-**5 Product Libraries:**
-1. **Style Library** - Garment templates with 50+ measurement fields
-2. **Fabric Library** - Fabrics with supplier relation
-3. **Raw Material Library** - Production inputs (buttons, zippers, etc.)
-4. **Packaging Library** - Packaging materials by channel
-5. **Finished Products** - Sellable products (Style + Fabric combinations)
-
-**Features:**
-- Full CRUD for all 5 libraries
-- Supplier dropdowns for Fabric, Raw Material, Packaging
-- Style/Fabric/Entity dropdowns for Finished Products
-- Sales channel checkboxes for Finished Products
-- Search functionality on all list pages
-- Status badges (active/inactive/draft)
-
-**Phase 1 Scope (Completed):**
-- Database models for all libraries
-- Basic CRUD operations
-- List/Create/Edit pages for all libraries
-
-**Phase 2: Data Migration (Completed):**
-- CSV parsing utilities
-- Migration scripts for all 5 libraries
-- Validation and rollback scripts
-- 100 finished products migrated
-
-**Phase 3A: Media Management (Completed):**
-- MediaFile database model
-- Media API routes (CRUD)
-- MediaUpload component with drag-and-drop
-- Supabase Storage integration
-- Primary image selection
-- File validation (size/type limits)
-
-**Not Yet Implemented (Future):**
-- Channel-specific field UIs (Amazon, Myntra fields)
-- CSV bulk import for new products
-- Bulk operations
-- Drag-and-drop reordering for media
-
-### Slice 4: Purchase Orders 🔲 (Not Started)
-- Multi-type POs (finished, fabric, raw material, etc.)
-- Entry modes (catalog, free text, link to finished)
-- Approval workflow
-- Status transitions
-
-### Slice 5: GRN & Inventory 🔲 (Not Started)
-- Goods Receipt Notes
-- Batch tracking
-- Stock ledger
-- Inventory adjustments
-
-### Slice 6: Production 🔲 (Not Started)
-- Production orders
-- Material consumption
-- In-house vs Job Work
-
-### Slice 7: Finance 🔲 (Not Started)
-- Payment tracking
-- Marketplace settlements
-- Customer invoices
+## Database Models
+
+### Core
+- **Tenant** - Multi-tenant isolation
+- **User** - With supabaseUserId, role, isSuperAdmin
+- **UserPermission** - Module-level permissions (none/view/edit)
+
+### Suppliers
+- **Supplier** - With auto-generated code (SUP001), supplyCategories[], contacts, pricing
+- **SupplierContact** - With isPrimary flag
+- **SupplierPricing** - Product-supplier price mapping
+
+### Product Information (5 Libraries)
+- **Style** - Garment templates with 50+ measurement fields (chest32-50, length32-50, etc.)
+- **Fabric** - Material, color, design, work, cost, supplier relation
+- **RawMaterial** - Buttons, zippers, threads with cost per SKU
+- **Packaging** - Boxes, polybags by channel
+- **FinishedProduct** - Style + Fabric combination, selling channels, pricing
+- **MediaFile** - Images/videos with isPrimary, sortOrder, stored in Supabase Storage
+
+### Admin Settings
+- **SalesChannel** - Amazon, Myntra, Shopify, etc.
+- **Entity** - Business entities with GST
+- **PaymentMode** - Bank accounts per entity
+
+### Future (Schema Ready)
+- PurchaseOrder, POLineItem, GRN, InventoryBatch, StockLedger
+- ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
 
 ---
 
 ## API Endpoints
 
-### Suppliers API
+### Auth Pattern
+```typescript
+const supabase = await createClient()
+const { data: { user: authUser } } = await supabase.auth.getUser()
+const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: authUser.id } })
+// Use currentUser.tenantId for all queries
+```
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/suppliers` | List suppliers (with search, filters, pagination, purchaseType) |
-| POST | `/api/suppliers` | Create supplier |
-| GET | `/api/suppliers/active` | Get active suppliers (for dropdowns) |
-| GET | `/api/suppliers/by-purchase-type?purchaseType=X` | Get suppliers by purchase type (for PO vendor dropdown) |
-| GET | `/api/suppliers/[id]` | Get supplier details |
-| PUT | `/api/suppliers/[id]` | Update supplier |
-| DELETE | `/api/suppliers/[id]` | Deactivate supplier (soft delete) |
-| POST | `/api/suppliers/[id]/activate` | Reactivate supplier |
-| POST | `/api/suppliers/[id]/contacts` | Add contact |
-| PUT | `/api/suppliers/[id]/contacts/[contactId]` | Update contact |
-| DELETE | `/api/suppliers/[id]/contacts/[contactId]` | Delete contact |
-| GET | `/api/suppliers/[id]/pricing` | Get pricing catalog |
-| POST | `/api/suppliers/[id]/pricing` | Upload pricing (direct or CSV) |
-| DELETE | `/api/suppliers/[id]/pricing/[pricingId]` | Delete pricing |
-
-### Users API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/users` | List users (Super Admin only) |
-| POST | `/api/users` | Create user |
-| GET | `/api/users/[id]` | Get user details |
-| PUT | `/api/users/[id]` | Update user |
-| GET | `/api/users/[id]/permissions` | Get user permissions |
-| PUT | `/api/users/[id]/permissions` | Update user permissions |
-| GET | `/api/me` | Get current user |
-
-### Profile API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/profile` | Get current user profile |
-| PUT | `/api/profile` | Update profile (name) |
-| POST | `/api/profile/change-password` | Change password |
-
-### Admin Settings API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/admin/settings/sales-channels` | List sales channels |
-| POST | `/api/admin/settings/sales-channels` | Create sales channel |
-| GET | `/api/admin/settings/sales-channels/[id]` | Get sales channel |
-| PUT | `/api/admin/settings/sales-channels/[id]` | Update sales channel |
-| DELETE | `/api/admin/settings/sales-channels/[id]` | Deactivate sales channel |
-| GET | `/api/admin/settings/entities` | List entities |
-| POST | `/api/admin/settings/entities` | Create entity |
-| GET | `/api/admin/settings/entities/[id]` | Get entity with payment modes |
-| PUT | `/api/admin/settings/entities/[id]` | Update entity |
-| DELETE | `/api/admin/settings/entities/[id]` | Deactivate entity |
-| POST | `/api/admin/settings/entities/[id]/payment-modes` | Add payment mode |
-| PUT | `/api/admin/settings/payment-modes/[id]` | Update payment mode |
-| DELETE | `/api/admin/settings/payment-modes/[id]` | Delete payment mode |
-
-### Product Information API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/product-info/styles` | List styles |
-| POST | `/api/product-info/styles` | Create style |
-| GET | `/api/product-info/styles/[id]` | Get style |
-| PUT | `/api/product-info/styles/[id]` | Update style |
-| DELETE | `/api/product-info/styles/[id]` | Deactivate style |
-| GET | `/api/product-info/fabrics` | List fabrics (includes supplier) |
-| POST | `/api/product-info/fabrics` | Create fabric |
-| GET | `/api/product-info/fabrics/[id]` | Get fabric |
-| PUT | `/api/product-info/fabrics/[id]` | Update fabric |
-| DELETE | `/api/product-info/fabrics/[id]` | Deactivate fabric |
-| GET | `/api/product-info/raw-materials` | List raw materials |
-| POST | `/api/product-info/raw-materials` | Create raw material |
-| GET | `/api/product-info/raw-materials/[id]` | Get raw material |
-| PUT | `/api/product-info/raw-materials/[id]` | Update raw material |
-| DELETE | `/api/product-info/raw-materials/[id]` | Deactivate raw material |
-| GET | `/api/product-info/packaging` | List packaging |
-| POST | `/api/product-info/packaging` | Create packaging |
-| GET | `/api/product-info/packaging/[id]` | Get packaging |
-| PUT | `/api/product-info/packaging/[id]` | Update packaging |
-| DELETE | `/api/product-info/packaging/[id]` | Deactivate packaging |
-| GET | `/api/product-info/finished` | List finished products (includes style, fabric, entity) |
-| POST | `/api/product-info/finished` | Create finished product |
-| GET | `/api/product-info/finished/[id]` | Get finished product |
-| PUT | `/api/product-info/finished/[id]` | Update finished product |
-| DELETE | `/api/product-info/finished/[id]` | Deactivate finished product |
-| GET | `/api/product-info/finished/[id]/media` | List media for product |
-| POST | `/api/product-info/finished/[id]/media` | Add media to product |
-| GET | `/api/product-info/finished/[id]/media/[mediaId]` | Get single media |
-| PATCH | `/api/product-info/finished/[id]/media/[mediaId]` | Update media (isPrimary, sortOrder) |
-| DELETE | `/api/product-info/finished/[id]/media/[mediaId]` | Delete media from product and storage |
+### Key Endpoints
+| Resource | Endpoints |
+|----------|-----------|
+| Users | GET/POST `/api/users`, GET/PUT `/api/users/[id]`, permissions |
+| Profile | GET/PUT `/api/profile`, POST `/api/profile/change-password` |
+| Suppliers | CRUD + `/active`, `/by-purchase-type`, contacts, pricing |
+| Settings | `/api/admin/settings/{sales-channels,entities,payment-modes}` |
+| Styles | CRUD `/api/product-info/styles/[id]` |
+| Fabrics | CRUD `/api/product-info/fabrics/[id]` |
+| Raw Materials | CRUD `/api/product-info/raw-materials/[id]` |
+| Packaging | CRUD `/api/product-info/packaging/[id]` |
+| Finished Products | CRUD `/api/product-info/finished/[id]` |
+| Media | GET/POST `/api/product-info/finished/[id]/media`, PATCH/DELETE `[mediaId]` |
 
 ---
 
-## Frontend Pages
+## Key Components
 
-### Dashboard Layout (`src/app/(dashboard)/layout.tsx`)
-- Sidebar navigation with collapsible state
-- Header with user menu
-- Protected routes
-
-### Sidebar Navigation Structure
-The sidebar (`src/components/layout/sidebar.tsx`) renders navigation based on `NAVIGATION` constant from `src/lib/constants.ts`:
-
-| Module | Icon | Sub-items | Access |
-|--------|------|-----------|--------|
-| Dashboard | LayoutDashboard | - | Everyone |
-| Purchase Orders | ShoppingCart | - | Module permission |
-| Suppliers | Truck | - | Module permission |
-| Products | Package | - | Module permission |
-| Inventory | Warehouse | Stock Overview, GRN, Outflow, Adjustments, Ledger | Module permission |
-| Production | Factory | In-House, Job Work | Module permission |
-| Finance | Wallet | Fulton, MSE, SNA, Payments, Settlements, Invoices | Module permission |
-| External Vendors | Building2 | Shivaang | Module permission |
-| Admin | Shield | PO Approvals, Payment Approvals, User Management, Settings | Super Admin only |
-
-**Permission Logic:**
-1. Super Admin sees all items immediately
-2. During loading, only items without permission requirements are shown
-3. Non-super-admin users see items based on their module permissions
-
-### Suppliers Module
-
-**List Page** (`/suppliers`):
-- Search by name, code, email
-- Filter by status (active/inactive)
-- Pagination
-- Actions: Edit, Activate/Deactivate
-
-**Create Page** (`/suppliers/new`):
-- Basic info (name, email, phone)
-- Tax info (GST, PAN)
-- Banking details
-- Multiple contacts with primary designation
-
-**Edit Page** (`/suppliers/[id]`):
-- All fields from create
-- Contact management (add/edit/delete)
-- Pricing catalog section
-- CSV upload for pricing
-- Download CSV template
-
-### User Management Module (Admin Only)
-
-**List Page** (`/admin/users`):
-- Table with all users
-- Shows name, email, role, status, permissions count
-- Actions with tooltips: Edit (pencil), Activate/Deactivate (shield)
-- Super Admin badge for admin users
-
-**Create Page** (`/admin/users/new`):
-- Full name and email inputs
-- Super Admin toggle
-- Module permissions matrix (when not super admin)
-- Success dialog with temporary password
-- Copy password button
-
-**Edit Page** (`/admin/users/[id]`):
-- Pre-populated form with user data
-- Active/Inactive toggle
-- Super Admin toggle
-- Module permissions matrix
-- Uses `useParams()` hook for route params
-
-### Profile Page
-
-**Profile Page** (`/profile`):
-- Personal information section (name, email - readonly)
-- Super Admin badge display
-- Change password section with:
-  - Current password input
-  - New password with strength requirements
-  - Confirm password
-  - Real-time password validation indicators
-  - Show/hide password toggles
-- Account information (status, created date, user ID)
-- Success/error alerts for both forms
-
-**Password Requirements:**
-- Minimum 12 characters
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one number
-- At least one special character (@$!%*?&#)
-
-### Admin Settings Module (Super Admin Only)
-
-**Landing Page** (`/admin/settings`):
-- Cards linking to each settings section
-- Sales Channels, Entities, Company Information
-
-**Sales Channels Page** (`/admin/settings/sales-channels`):
-- Table with all channels (name, code, status)
-- Add/Edit dialogs
-- Activate/Deactivate actions
-
-**Entities Page** (`/admin/settings/entities`):
-- Table with entities (name, code, GST, payment modes count)
-- Add/Edit entity dialogs
-- Expandable payment modes section
-- Add/Edit/Delete payment modes
-
-**Company Info Page** (`/admin/settings/company`):
-- Company details form
-- Logo upload (placeholder)
-
-### Product Information Module
-
-**Landing Page** (`/products`):
-- 5 library cards with icons and descriptions
-- Links to: Finished Products, Styles, Fabrics, Raw Materials, Packaging
-
-**Style Library** (`/products/styles`):
-- List page with search by code/name
-- Create/Edit forms with:
-  - Basic info (styleCode, styleName, gender, HSN, GST)
-  - Measurements organized by size (32-50)
-  - Fields: chest, length, waist, shoulder, neckDepth, armhole, sleeveLength
-
-**Fabric Library** (`/products/fabrics`):
-- List page with search, supplier display
-- Create/Edit forms with:
-  - Basic info (fabricSku, material, color, design, work)
-  - Supplier dropdown
-  - Specifications (width, weight, UOM)
-  - Pricing (cost, GST, HSN)
-
-**Raw Material Library** (`/products/raw-materials`):
-- List page with search, supplier display
-- Create/Edit forms with:
-  - Basic info (rmSku, type, color)
-  - Supplier dropdown
-  - Quantity (measurement unit, units per quantity)
-  - Pricing (cost per SKU, GST, HSN)
-
-**Packaging Library** (`/products/packaging`):
-- List page with search, channel/supplier display
-- Create/Edit forms with:
-  - Basic info (pkgSku, type, channel, description)
-  - Supplier dropdown
-  - Specifications (dimensions, measurement unit)
-  - Pricing (cost per unit, GST, HSN)
-
-**Finished Products Library** (`/products/finished`):
-- List page with search, style/fabric display
-- Create/Edit forms with:
-  - SKU info (parentSku, childSku)
-  - Product details (title, color, size)
-  - Relations (Style dropdown, Fabric dropdown, Entity dropdown)
-  - Pricing (cost, selling price, MRP, GST)
-  - Selling Channels (checkboxes from sales channels)
-
----
-
-## Key Patterns & Conventions
-
-### API Route Pattern
+### VendorSelector
+Filter suppliers by purchase type for PO forms:
 ```typescript
-// src/app/api/[resource]/route.ts
-export async function GET(request: NextRequest) {
-  // 1. Auth check
-  // 2. Get current user & tenantId
-  // 3. Parse query params
-  // 4. Call service layer
-  // 5. Return JSON response
-}
-
-export async function POST(request: NextRequest) {
-  // 1. Auth check
-  // 2. Get current user & tenantId
-  // 3. Parse & validate body with Zod
-  // 4. Call service layer
-  // 5. Return JSON response
-}
+<VendorSelector purchaseType={type} value={id} onChange={(id, supplier) => {}} />
 ```
 
-### Service Layer Pattern
+### MediaUpload
+Drag-and-drop media upload for products:
 ```typescript
-// src/services/[resource]-service.ts
-export class ResourceService {
-  static async getAll(tenantId: string, filters?: Filters) {
-    // Always filter by tenantId
-    return prisma.resource.findMany({
-      where: { tenantId, ...filters },
-    })
-  }
-
-  static async create(tenantId: string, data: CreateInput) {
-    return prisma.resource.create({
-      data: { ...data, tenantId },
-    })
-  }
-}
+<MediaUpload productId={id} existingMedia={media} onMediaChange={setMedia} maxImages={14} maxVideos={1} />
 ```
+- Supports: JPG, PNG, WEBP (5MB), MP4, MOV (50MB)
+- Features: Preview grid, set primary, delete, upload progress
 
-### Validator Pattern
+### Dynamic Route Params
 ```typescript
-// src/validators/[resource].ts
-import { z } from 'zod'
+// Client components - use hook
+const params = useParams()
+const id = params?.id as string
 
-export const createResourceSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email().optional().or(z.literal('')),
-  // ...
-})
-
-export const updateResourceSchema = createResourceSchema.partial()
-
-export type CreateResourceInput = z.infer<typeof createResourceSchema>
-```
-
-### Frontend Page Pattern
-```typescript
-'use client'
-
-export default function ResourcePage() {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
-    const response = await fetch('/api/resource')
-    const result = await response.json()
-    setData(result.data)
-    setLoading(false)
-  }
-
-  return (
-    <div className="space-y-6">
-      <PageHeader title="..." />
-      {loading ? <LoadingSpinner /> : <DataTable data={data} />}
-    </div>
-  )
-}
-```
-
-### VendorSelector Component
-
-For selecting suppliers filtered by purchase type in Purchase Orders:
-
-```typescript
-import { VendorSelector } from '@/components/shared/vendor-selector'
-
-function PurchaseOrderForm() {
-  const [purchaseType, setPurchaseType] = useState('')
-  const [vendorId, setVendorId] = useState('')
-
-  return (
-    <VendorSelector
-      purchaseType={purchaseType}
-      value={vendorId}
-      onChange={(id, supplier) => {
-        setVendorId(id)
-        // supplier object contains: id, code, name, supplyCategories, email, gstNumber
-      }}
-      label="Vendor"
-      required
-    />
-  )
-}
-```
-
-**Props:**
-- `purchaseType` (required): Filter suppliers by this purchase type
-- `value`: Currently selected supplier ID
-- `onChange(supplierId, supplier)`: Called when selection changes
-- `label`: Label text (default: "Vendor")
-- `placeholder`: Placeholder text
-- `disabled`: Disable the selector
-- `required`: Show required indicator
-
-### MediaUpload Component
-
-For uploading product images and videos with drag-and-drop support:
-
-```typescript
-import { MediaUpload } from '@/components/products/media-upload'
-
-function ProductEditForm({ productId }: { productId: string }) {
-  const [media, setMedia] = useState<MediaFile[]>([])
-
-  return (
-    <MediaUpload
-      productId={productId}
-      existingMedia={media}
-      onMediaChange={setMedia}
-      maxImages={14}
-      maxVideos={1}
-    />
-  )
-}
-```
-
-**Props:**
-- `productId` (required): The finished product ID
-- `existingMedia`: Array of existing media files
-- `onMediaChange`: Callback when media changes (add/delete/set primary)
-- `maxImages`: Maximum images allowed (default: 14)
-- `maxVideos`: Maximum videos allowed (default: 1)
-
-**Features:**
-- Drag-and-drop file upload
-- Image preview grid
-- Set primary image (star button)
-- Delete media
-- File validation (size, type)
-- Upload progress indicator
-- Error handling
-
-**Supported Formats:**
-- Images: JPG, PNG, WEBP (max 5MB each)
-- Videos: MP4, MOV (max 50MB)
-
-### Dynamic Route Params (Next.js 14/15)
-
-**Option 1: useParams() hook (Recommended for client components)**
-```typescript
-'use client'
-import { useParams } from 'next/navigation'
-
-export default function Page() {
-  const params = useParams()
-  const id = params?.id as string
-  // ...
-}
-```
-
-**Option 2: use() with Promise params (Next.js 15+ server components)**
-```typescript
-import { use } from 'react'
-
-export default function Page({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
-  // ...
-}
+// API routes - await Promise
+const { id } = await params
 ```
 
 ---
 
-## Current State & Next Steps
+## Implemented Features
 
-### Completed
-- [x] Project setup (Next.js, Prisma, Supabase)
-- [x] Database schema design & migration
-- [x] UI component library (shadcn/ui)
-- [x] Slice 1: User Management
-- [x] Slice 2: Supplier Management
-- [x] Slice 2.5: Admin Settings
-- [x] Slice 3: Product Information (Phase 1)
-- [x] Slice 3: Product Information (Phase 2 - Data Migration)
-- [x] Slice 3: Product Information (Phase 3A - Media Management)
+### Slice 1: User Management ✅
+- User CRUD (Super Admin only), permissions matrix, password management
 
-### In Progress
-- [ ] Testing Phase 3A media upload in frontend
+### Slice 2: Supplier Management ✅
+- Auto-generated codes, contacts, pricing catalog, supply categories
+- Real-time form validation, CSV pricing upload
 
-### Next Up
-- [ ] Slice 3 Phase 3B: Channel-specific UIs (Amazon, Myntra fields)
-- [ ] Slice 3 Phase 3C: Bulk operations, CSV import
-- [ ] Slice 4: Purchase Orders
-- [ ] Slice 5: GRN & Inventory
+### Slice 2.5: Admin Settings ✅
+- Sales channels, entities with payment modes, company info
 
-### Known Issues
-- None currently documented
+### Slice 3: Product Information ✅
 
-### Recently Added (2026-02-06)
-- **Phase 3A: Media Management:**
-  - Created `MediaUpload` component (`src/components/products/media-upload.tsx`)
-    - Drag-and-drop file upload with react-dropzone
-    - Image/video preview grid
-    - Set primary image functionality
-    - Delete media functionality
-    - File validation (size, type limits)
-    - Upload progress indicator
-  - Created `mediaUploader` utility (`src/lib/media-upload.ts`)
-    - `uploadFile()` - Upload to Supabase Storage
-    - `deleteFile()` - Remove from storage
-    - `validateFile()` - Check size and type
-    - `getPublicUrl()` - Get public URL for display
-  - Created media API routes:
-    - `GET /api/product-info/finished/[id]/media` - List all media
-    - `POST /api/product-info/finished/[id]/media` - Add new media
-    - `GET /api/product-info/finished/[id]/media/[mediaId]` - Get single media
-    - `PATCH /api/product-info/finished/[id]/media/[mediaId]` - Update (isPrimary, sortOrder)
-    - `DELETE /api/product-info/finished/[id]/media/[mediaId]` - Delete from storage and DB
-  - Integrated MediaUpload into finished product edit page
-  - Limits: 14 images (5MB each), 1 video (50MB)
-  - Supported formats: JPG, PNG, WEBP for images; MP4, MOV for video
-  - **Manual Setup Required:** Create Supabase Storage bucket `product-media` with public access policy
+**Phase 1 - CRUD & UI:**
+- 5 product libraries with list/create/edit pages
+- Style measurements, fabric/supplier relations, sales channel checkboxes
 
-- **Phase 2: Data Migration Scripts:**
-  - Created migration infrastructure in `scripts/migrations/`
-  - CSV parser utility with data cleaning functions
-  - Individual migration scripts for each library:
-    - `01-migrate-styles.ts` - Extracts unique styles from finished items
-    - `02-migrate-fabrics.ts` - Migrates fabric library
-    - `03-migrate-raw-materials.ts` - Migrates raw materials
-    - `04-migrate-packaging.ts` - Migrates packaging items
-    - `05-migrate-products.ts` - Migrates finished products with style/fabric relations
-  - Main orchestrator: `migrate-product-data.ts`
-  - Validation script: `validate-migration.ts`
-  - Rollback script: `rollback-migration.ts`
-  - npm scripts added:
-    - `npm run migrate:products` - Run full migration
-    - `npm run migrate:validate` - Validate migration results
-    - `npm run migrate:rollback` - Rollback migration (requires CONFIRM_ROLLBACK=yes)
-  - Migration results (final):
-    - 8 styles created
-    - 44 fabrics created (31 original + 13 added for missing combinations)
-    - 19 raw materials created
-    - 17 packaging items created
-    - 100 finished products created (all migrated successfully)
-  - Added `add-missing-fabrics.ts` script to create 13 missing fabric combinations
+**Phase 2 - Data Migration:**
+- CSV parsing utilities in `scripts/migrations/`
+- Scripts: `01-migrate-styles.ts` through `05-migrate-products.ts`
+- Results: 8 styles, 44 fabrics, 19 raw materials, 17 packaging, 100 products
+- Commands: `npm run migrate:products`, `migrate:validate`, `migrate:rollback`
 
-### Recently Added (2026-02-05)
-- **Product Information Module (Phase 1):**
-  - Database models: Style, Fabric, RawMaterial, Packaging, FinishedProduct, MediaFile
-  - Channel-specific tables: ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
-  - Validators for all 5 product libraries
-  - Services with CRUD operations for all libraries
-  - API routes: 10 endpoints under `/api/product-info/`
-  - Frontend pages: 16 pages total
-    - Products landing page with 5 library cards
-    - Style library: list, create, edit (with 50+ measurement fields)
-    - Fabric library: list, create, edit (with supplier dropdown)
-    - Raw Material library: list, create, edit (with supplier dropdown)
-    - Packaging library: list, create, edit (with supplier dropdown)
-    - Finished Products: list, create, edit (with style/fabric/entity/channels)
+**Phase 3A - Media Management:**
+- MediaFile model with Supabase Storage integration
+- MediaUpload component with react-dropzone
+- API routes for CRUD, set primary, reorder
+- Limits: 14 images, 1 video per product
 
-- **Admin Settings Module:**
-  - Database models: SalesChannel, Entity, PaymentMode
-  - Validators and services for settings CRUD
-  - API routes: 6 endpoints under `/api/admin/settings/`
-  - Frontend pages: landing, sales-channels, entities, company
-  - Sales channel management (CRUD)
-  - Entity management with payment modes
-  - UI components: Tabs, Accordion (added via shadcn)
+### Not Yet Implemented
+- Slice 4: Purchase Orders
+- Slice 5: GRN & Inventory
+- Slice 6: Production
+- Slice 7: Finance
+- Channel-specific UIs (Amazon, Myntra fields)
+- Bulk operations, CSV import for products
 
-### Recently Added (2026-02-04)
-- **Real-time Form Validation for Supplier Forms:**
-  - Validates fields on change and blur
-  - Shows error messages immediately below invalid fields
-  - Red border on invalid fields using `border-destructive` class
-  - Submit button disabled until form is valid
-  - Validation rules:
-    - Name: Required, minimum 2 characters
-    - Email: Valid email format (optional)
-    - Phone: 10-15 digits (optional)
-    - GST: Exactly 15 characters with valid format (optional)
-    - PAN: Exactly 10 characters with valid format (optional)
-    - IFSC: Valid format like HDFC0001234 (optional)
-    - Supply Categories: At least 1 required
-  - Character count shown for GST/PAN fields
-  - Auto-uppercase for GST, PAN, IFSC fields
+---
 
-### Recently Added (2026-02-03)
-- **Supply Categories feature for Suppliers:**
-  - Added `supplyCategories` field to Supplier model (PostgreSQL array)
-  - Updated supplier forms (new/edit) with category checkboxes (14 purchase types)
-  - Added `purchaseType` filter to supplier list API
-  - New `/api/suppliers/by-purchase-type` endpoint for PO vendor dropdown
-  - Created `VendorSelector` component for Purchase Order module
-- Profile page with change password functionality
-- Alert UI component
-- Updated user menu dropdown (removed Settings, linked Profile)
+## Environment & Config
 
-### Recently Fixed (2026-02-03)
-- **Fixed Sidebar Navigation:**
-  - Fixed permission check order - Super Admin now sees all items immediately
-  - Added Shield icon for Admin section
-  - Added MSE and SNA to Finance submenu
-  - Updated Admin section to be `superAdminOnly` with proper children
-  - Added DollarSign and Users icons to icon map
-- Fixed Edit User page `useParams()` error - switched from `use(params)` to `useParams()` hook
-- Fixed User creation "Done" button redirect - now goes to `/admin/users`
-- Added tooltips to Edit and Deactivate buttons on user list page
-
-### Environment Variables Required
 ```env
 DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
@@ -1383,20 +181,42 @@ NEXT_PUBLIC_SUPABASE_URL=https://...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-### Build Configuration Notes
-- `scripts/` directory is excluded from TypeScript compilation in `tsconfig.json`
-- Migration scripts are run separately with `ts-node` via npm scripts
-- Supabase Storage bucket `product-media` must be created manually with public read access
+**Manual Setup:**
+- Create Supabase Storage bucket `product-media` with public read access
+
+**Build Notes:**
+- `scripts/` excluded from TypeScript compilation in `tsconfig.json`
+- Migration scripts run via `npx cross-env TENANT_ID=xxx npm run migrate:*`
 
 ---
 
-## How to Use This Document
+## Changelog
 
-1. **New Chat Session:** Share this file at the start to provide full context
-2. **After Changes:** Update relevant sections and the "Last Updated" date
-3. **Adding Features:** Document new endpoints, pages, and patterns
-4. **Tracking Progress:** Update the "Implemented Slices" section
+### 2026-02-09
+- Phase 3A Media Management complete
+- MediaUpload component with drag-drop, preview, primary selection
+- Media API routes (list, create, update, delete)
+- Supabase Storage integration
+
+### 2026-02-06
+- Phase 2 Data Migration complete (100 products migrated)
+- Migration scripts for all 5 libraries
+- Added 13 missing fabric combinations
+
+### 2026-02-05
+- Product Information Module Phase 1 complete
+- 5 libraries: Style, Fabric, Raw Material, Packaging, Finished Products
+- Admin Settings: Sales Channels, Entities, Payment Modes
+
+### 2026-02-04
+- Real-time form validation for suppliers
+- Supply categories feature
+
+### 2026-02-03
+- Profile page with change password
+- Sidebar navigation fixes
+- VendorSelector component
 
 ---
 
-*This document is auto-maintained by Claude Code. Update after every significant change.*
+*Update this file after every significant change.*
