@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-09 (Phase 3A Media Management complete)
+> **Last Updated:** 2026-02-09 (PO Workflow Refinement + Cascading Dropdown for All Product Types)
 
 ## Overview
 
@@ -20,18 +20,24 @@ src/
 │   │   ├── admin/users/, admin/settings/
 │   │   ├── suppliers/
 │   │   ├── products/{styles,fabrics,raw-materials,packaging,finished}/
+│   │   ├── purchase-orders/, purchase-orders/new, [id]/, [id]/edit/
 │   │   ├── inventory/, production/, finance/
 │   │   └── profile/
 │   └── api/
 │       ├── users/, me/, profile/
 │       ├── suppliers/[id]/{contacts,pricing}/
 │       ├── admin/settings/{sales-channels,entities,payment-modes}/
-│       └── product-info/{styles,fabrics,raw-materials,packaging,finished}/
-│           └── finished/[id]/media/[mediaId]/
+│       ├── product-info/{styles,fabrics,raw-materials,packaging,finished}/
+│       │   ├── finished/[id]/media/[mediaId]/
+│       │   ├── finished/{categories,styles-by-category,colors,sizes,lookup}/
+│       │   └── search/                # Cross-library product search
+│       └── purchase-orders/
+│           └── [id]/{submit,approve}/
 ├── components/
 │   ├── ui/                    # shadcn components
 │   ├── shared/                # page-header, loading-spinner, vendor-selector
 │   ├── products/media-upload.tsx
+│   ├── purchase-orders/       # po-form, po-list, po-detail, product-search, add-line-item-dialog
 │   └── layout/sidebar.tsx, header.tsx
 ├── lib/
 │   ├── prisma.ts, utils.ts, constants.ts
@@ -72,8 +78,14 @@ data/                          # CSV files for migration
 - **Entity** - Business entities with GST
 - **PaymentMode** - Bank accounts per entity
 
+### Purchase Orders
+- **PurchaseOrder** - 14 types, 4 entry modes, status workflow (draft→pending→approved→GRN)
+- **POLineItem** - Catalog-based items with product reference
+- **POLineItemFreetext** - Free-text items for services
+- **POLineItemRefund** - Customer refund entries
+
 ### Future (Schema Ready)
-- PurchaseOrder, POLineItem, GRN, InventoryBatch, StockLedger
+- GRN, InventoryBatch, StockLedger
 - ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
 
 ---
@@ -101,6 +113,12 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | Packaging | CRUD `/api/product-info/packaging/[id]` |
 | Finished Products | CRUD `/api/product-info/finished/[id]` |
 | Media | GET/POST `/api/product-info/finished/[id]/media`, PATCH/DELETE `[mediaId]` |
+| Product Search | GET `/api/product-info/search?type={finished,fabric,raw_material,packaging}&q=` |
+| Finished Lookup | GET `/api/product-info/finished/{categories,styles-by-category,colors,sizes,lookup}` |
+| Fabric Lookup | GET `/api/product-info/fabrics/{materials,colors,designs,works,lookup}` |
+| RawMaterial Lookup | GET `/api/product-info/raw-materials/{types,colors,lookup}` |
+| Packaging Lookup | GET `/api/product-info/packaging/{types,channels,dimensions,lookup}` |
+| Purchase Orders | CRUD `/api/purchase-orders/[id]`, POST `[id]/submit`, `[id]/approve` |
 
 ---
 
@@ -119,6 +137,41 @@ Drag-and-drop media upload for products:
 ```
 - Supports: JPG, PNG, WEBP (5MB), MP4, MOV (50MB)
 - Features: Preview grid, set primary, delete, upload progress
+
+### POForm
+Handles all 14 purchase types with appropriate entry modes:
+```typescript
+<POForm mode="create" />  // New PO
+<POForm mode="edit" initialData={purchaseOrder} />  // Edit draft PO
+```
+- Auto-selects entry mode based on purchase type
+- AddLineItemDialog for all catalog items (Finished, Fabric, Raw Material, Packaging)
+- Free-text forms for services
+- Save as Draft or Save & Submit actions
+- **Note:** Entity field removed from PO creation (only used for payment execution)
+
+### AddLineItemDialog
+Cascading dropdown supporting all product types:
+```typescript
+<AddLineItemDialog
+  open={open}
+  onOpenChange={setOpen}
+  purchaseType={purchaseType}
+  supplierId={supplierId}
+  supplierCode="SUP001"
+  onAdd={(item) => addLineItem(item)}
+/>
+```
+**Cascading flows by type:**
+- **Finished:** Category → Style → Color → Size
+- **Fabric:** Material → Color → Design → Work
+- **Raw Material:** Type → Color
+- **Packaging:** Type → Channel → Dimensions
+
+Features:
+- Searchable dropdowns at each level
+- Shows vendor pricing when available
+- Auto-populates SKU, price, and GST
 
 ### Dynamic Route Params
 ```typescript
@@ -162,8 +215,33 @@ const { id } = await params
 - API routes for CRUD, set primary, reorder
 - Limits: 14 images, 1 video per product
 
+### Slice 4: Purchase Orders ✅
+
+**14 Purchase Types:**
+- Catalog-based: Finished, Fabric, Raw Material, Packaging, Corporate Assets
+- Linked to Finished: Samples, Influencer Samples
+- Free-text: Transportation, Advertisement, Office Expenses, Software, Feedback, Misc
+- Special: Customer Refunds
+
+**Entry Modes:** catalog, free_text, link_finished, special
+
+**Features:**
+- POForm component handles all 14 types with appropriate entry modes
+- **Entity field removed from PO creation** (entities only used for payment execution)
+- Cascading dropdown for ALL catalog types via AddLineItemDialog:
+  - Finished: Category → Style → Color → Size
+  - Fabric: Material → Color → Design → Work
+  - Raw Material: Type → Color
+  - Packaging: Type → Channel → Dimensions
+- Searchable dropdowns with vendor pricing indicator
+- Job Work support (raw_materials_issued mode for Finished type)
+- Approval workflow with approve/reject dialogs
+- Draft editing, status transitions, print view
+- POList with search, status & type filters, pagination
+
+**Status Flow:** draft → pending_approval → approved → (GRN flow)
+
 ### Not Yet Implemented
-- Slice 4: Purchase Orders
 - Slice 5: GRN & Inventory
 - Slice 6: Production
 - Slice 7: Finance
@@ -193,6 +271,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ## Changelog
 
 ### 2026-02-09
+- **Cascading Dropdown for Line Items**
+- AddLineItemDialog with Category → Style → Color → Size flow
+- 5 new API endpoints for attribute filtering: categories, styles-by-category, colors, sizes, lookup
+- Searchable dropdowns with vendor pricing indicator
+- Integrated into POForm for Finished, Samples, Influencer Samples types
+
+### 2026-02-09 (Phase 4)
+- **Phase 4 Purchase Orders complete**
+- POForm, POList, PODetail, ProductSearch components
+- API routes: CRUD, submit, approve/reject
+- 14 purchase types with 4 entry modes
+- Approval workflow with dialogs
+- Product search across all 5 libraries
+
+### 2026-02-09 (earlier)
 - Phase 3A Media Management complete
 - MediaUpload component with drag-drop, preview, primary selection
 - Media API routes (list, create, update, delete)

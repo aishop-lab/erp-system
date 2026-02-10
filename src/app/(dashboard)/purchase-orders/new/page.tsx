@@ -1,5 +1,7 @@
+'use client'
+
 import { PageHeader } from '@/components/shared/page-header'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { POForm } from '@/components/purchase-orders/po-form'
 
 export default function NewPurchaseOrderPage() {
   return (
@@ -14,19 +16,7 @@ export default function NewPurchaseOrderPage() {
         ]}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Purchase Order Form</CardTitle>
-          <CardDescription>
-            Fill in the details to create a new purchase order
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Purchase order form coming soon...
-          </p>
-        </CardContent>
-      </Card>
+      <POForm />
     </div>
   )
 }

@@ -26,7 +26,6 @@ export const poRefundItemSchema = z.object({
 export const createPurchaseOrderSchema = z.object({
   purchaseType: z.nativeEnum(PurchaseType),
   supplierId: z.string().cuid().optional().nullable(),
-  entityId: z.string().cuid('Entity is required'),
   entryMode: z.nativeEnum(EntryMode),
   rawMaterialMode: z.nativeEnum(RawMaterialMode).optional().nullable(),
   notes: z.string().max(1000).optional(),

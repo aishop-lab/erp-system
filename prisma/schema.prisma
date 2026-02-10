@@ -8,9 +8,1038 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model Tenant {
+  id                     String                  @id @default(cuid())
+  name                   String
+  slug                   String                  @unique
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  approvalAuditLogs      ApprovalAuditLog[]
+  customerCredits        CustomerCredit[]
+  customerInvoices       CustomerInvoice[]
+  entities               Entity[]
+  externalVendors        ExternalVendor[]
+  fabrics                Fabric[]
+  finishedProducts       FinishedProduct[]
+  grns                   GRN[]
+  inventoryBatches       InventoryBatch[]
+  inventoryOutflows      InventoryOutflow[]
+  marketplaceSettlements MarketplaceSettlement[]
+  mediaFiles             MediaFile[]
+  packaging              Packaging[]
+  paymentModes           PaymentMode[]
+  payments               Payment[]
+  productCategories      ProductCategory[]
+  productions            Production[]
+  products               Product[]
+  purchaseOrders         PurchaseOrder[]
+  purchaseTypes          PurchaseTypeConfig[]
+  rawMaterials           RawMaterial[]
+  salesChannels          SalesChannel[]
+  stockAdjustments       StockAdjustment[]
+  stockLedger            StockLedger[]
+  styles                 Style[]
+  suppliers              Supplier[]
+  users                  User[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                     String             @id @default(cuid())
+  tenantId               String
+  email                  String             @unique
+  name                   String
+  role                   String             @default("user")
+  isSuperAdmin           Boolean            @default(false)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  isActive               Boolean            @default(true)
+  supabaseUserId         String?            @unique
+  approvalActions        ApprovalAuditLog[]
+  createdGRNs            GRN[]              @relation("GRNCreatedBy")
+  inventoryOutflows      InventoryOutflow[]
+  approvedPayments       Payment[]          @relation("PaymentApprovedBy")
+  createdPayments        Payment[]          @relation("PaymentCreatedBy")
+  createdProductions     Production[]       @relation("ProductionCreatedBy")
+  approvedPurchaseOrders PurchaseOrder[]    @relation("ApprovedBy")
+  createdPurchaseOrders  PurchaseOrder[]    @relation("CreatedBy")
+  stockAdjustments       StockAdjustment[]
+  permissions            UserPermission[]
+  tenant                 Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model UserPermission {
+  id              String          @id @default(cuid())
+  userId          String
+  module          String
+  subModule       String?
+  permissionLevel PermissionLevel @default(none)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module, subModule])
+  @@map("user_permissions")
+}
+
+model PurchaseTypeConfig {
+  id                String       @id @default(cuid())
+  tenantId          String
+  purchaseType      PurchaseType
+  name              String
+  prefix            String
+  allowedEntryModes EntryMode[]
+  trackInventory    Boolean      @default(false)
+  requiresApproval  Boolean      @default(true)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  tenant            Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, purchaseType])
+  @@map("purchase_types")
+}
+
+model SalesChannel {
+  id                     String                  @id @default(cuid())
+  tenantId               String
+  name                   String
+  code                   String
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  inventoryOutflows      InventoryOutflow[]
+  marketplaceSettlements MarketplaceSettlement[]
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("sales_channels")
+}
+
+model Entity {
+  id                String             @id @default(cuid())
+  tenantId          String
+  name              String
+  type              EntityType
+  isExternal        Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  finishedProducts  FinishedProduct[]
+  inventoryOutflows InventoryOutflow[]
+  paymentModes      PaymentMode[]
+  payments          Payment[]
+  purchaseOrders    PurchaseOrder[]
+
+  @@unique([tenantId, name])
+  @@map("entities")
+}
+
+model PaymentMode {
+  id        String    @id @default(cuid())
+  entityId  String
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenantId  String?
+  entity    Entity    @relation(fields: [entityId], references: [id])
+  Tenant    Tenant?   @relation(fields: [tenantId], references: [id])
+  payments  Payment[]
+
+  @@unique([entityId, name])
+  @@map("payment_modes")
+}
+
+model ExternalVendor {
+  id         String             @id @default(cuid())
+  tenantId   String
+  name       String
+  code       String
+  vendorType ExternalVendorType
+  isActive   Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  tenant     Tenant             @relation(fields: [tenantId], references: [id])
+  payments   Payment[]
+
+  @@unique([tenantId, code])
+  @@map("external_vendors")
+}
+
+model Supplier {
+  id                String            @id @default(cuid())
+  tenantId          String
+  name              String
+  code              String
+  email             String?
+  phone             String?
+  address           String?
+  gstNumber         String?
+  panNumber         String?
+  bankName          String?
+  bankAccountNumber String?
+  bankIfscCode      String?
+  paymentTerms      String?
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  supplyCategories  String[]          @default([])
+  fabrics           Fabric[]
+  packaging         Packaging[]
+  payments          Payment[]
+  purchaseOrders    PurchaseOrder[]
+  rawMaterials      RawMaterial[]
+  contacts          SupplierContact[]
+  pricings          SupplierPricing[]
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+model SupplierContact {
+  id         String   @id @default(cuid())
+  supplierId String
+  name       String
+  email      String?
+  phone      String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_contacts")
+}
+
+model SupplierPricing {
+  id         String    @id @default(cuid())
+  supplierId String
+  productId  String
+  unitPrice  Decimal   @db.Decimal(12, 2)
+  currency   String    @default("INR")
+  minQty     Int?
+  validFrom  DateTime?
+  validTo    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier   Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, productId])
+  @@map("supplier_pricing")
+}
+
+model ProductCategory {
+  id        String            @id @default(cuid())
+  tenantId  String
+  name      String
+  level     Int               @default(1)
+  parentId  String?
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  parent    ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  ProductCategory[] @relation("CategoryHierarchy")
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  products  Product[]
+
+  @@index([tenantId])
+  @@map("product_categories")
+}
+
+model Product {
+  id                  String               @id @default(cuid())
+  tenantId            String
+  sku                 String
+  name                String
+  description         String?
+  categoryId          String?
+  unit                String               @default("pcs")
+  hsnCode             String?
+  gstRate             Decimal?             @db.Decimal(5, 2)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  inventoryBatches    InventoryBatch[]
+  outflowItems        OutflowItem[]
+  poLineItems         POLineItem[]
+  poRmIssuanceItems   PORmIssuanceItem[]
+  productionMaterials ProductionMaterial[]
+  category            ProductCategory?     @relation(fields: [categoryId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  stockLedger         StockLedger[]
+  supplierPricings    SupplierPricing[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@map("products")
+}
+
+model PurchaseOrder {
+  id               String               @id @default(cuid())
+  tenantId         String
+  poNumber         String
+  purchaseType     PurchaseType
+  supplierId       String?
+  entityId         String
+  status           POStatus             @default(draft)
+  entryMode        EntryMode
+  rawMaterialMode  RawMaterialMode?
+  totalAmount      Decimal              @default(0) @db.Decimal(14, 2)
+  taxAmount        Decimal              @default(0) @db.Decimal(14, 2)
+  grandTotal       Decimal              @default(0) @db.Decimal(14, 2)
+  notes            String?
+  expectedDelivery DateTime?
+  createdById      String
+  approvedById     String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  grns             GRN[]
+  payments         Payment[]
+  lineItems        POLineItem[]
+  freeTextItems    POLineItemFreetext[]
+  refundItems      POLineItemRefund[]
+  rmIssuances      PORmIssuance[]
+  approvedBy       User?                @relation("ApprovedBy", fields: [approvedById], references: [id])
+  createdBy        User                 @relation("CreatedBy", fields: [createdById], references: [id])
+  entity           Entity               @relation(fields: [entityId], references: [id])
+  supplier         Supplier?            @relation(fields: [supplierId], references: [id])
+  tenant           Tenant               @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, purchaseType])
+  @@map("purchase_orders")
+}
+
+model POLineItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Int
+  unitPrice       Decimal       @db.Decimal(12, 2)
+  taxRate         Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal       @db.Decimal(14, 2)
+  receivedQty     Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  grnLineItems    GRNLineItem[]
+  product         Product       @relation(fields: [productId], references: [id])
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("po_line_items")
+}
+
+model POLineItemFreetext {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  description     String
+  quantity        Int           @default(1)
+  unitPrice       Decimal       @db.Decimal(12, 2)
+  taxRate         Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal       @db.Decimal(14, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("po_line_items_freetext")
+}
+
+model POLineItemRefund {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  customerName    String
+  orderNumber     String?
+  reason          String
+  amount          Decimal       @db.Decimal(12, 2)
+  refundMode      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("po_line_items_refunds")
+}
+
+model PORmIssuance {
+  id              String             @id @default(cuid())
+  purchaseOrderId String
+  issuanceNumber  String
+  issuedAt        DateTime           @default(now())
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  items           PORmIssuanceItem[]
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("po_rm_issuances")
+}
+
+model PORmIssuanceItem {
+  id             String          @id @default(cuid())
+  issuanceId     String
+  productId      String
+  quantity       Int
+  batchId        String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
+  issuance       PORmIssuance    @relation(fields: [issuanceId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id])
+
+  @@map("po_rm_issuance_items")
+}
+
+model GRN {
+  id              String        @id @default(cuid())
+  tenantId        String
+  grnNumber       String
+  purchaseOrderId String
+  receivedAt      DateTime      @default(now())
+  notes           String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  lineItems       GRNLineItem[]
+  createdBy       User          @relation("GRNCreatedBy", fields: [createdById], references: [id])
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, grnNumber])
+  @@index([tenantId])
+  @@map("grns")
+}
+
+model GRNLineItem {
+  id           String         @id @default(cuid())
+  grnId        String
+  poLineItemId String
+  receivedQty  Int
+  acceptedQty  Int
+  rejectedQty  Int            @default(0)
+  condition    GoodsCondition @default(good)
+  batchNumber  String?
+  expiryDate   DateTime?
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  grn          GRN            @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  poLineItem   POLineItem     @relation(fields: [poLineItemId], references: [id])
+
+  @@map("grn_line_items")
+}
+
+model InventoryBatch {
+  id              String             @id @default(cuid())
+  tenantId        String
+  productId       String
+  batchNumber     String
+  quantity        Int                @default(0)
+  costPrice       Decimal            @db.Decimal(12, 2)
+  expiryDate      DateTime?
+  locationId      String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  product         Product            @relation(fields: [productId], references: [id])
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  outflowItems    OutflowItem[]
+  rmIssuanceItems PORmIssuanceItem[]
+  stockLedger     StockLedger[]
+
+  @@unique([tenantId, productId, batchNumber])
+  @@index([tenantId, productId])
+  @@map("inventory_batches")
+}
+
+model StockLedger {
+  id             String          @id @default(cuid())
+  tenantId       String
+  productId      String
+  batchId        String?
+  movementType   MovementType
+  quantity       Int
+  referenceId    String?
+  referenceType  String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
+  product        Product         @relation(fields: [productId], references: [id])
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, productId])
+  @@index([tenantId, movementType])
+  @@map("stock_ledger")
+}
+
+model InventoryOutflow {
+  id             String             @id @default(cuid())
+  tenantId       String
+  outflowNumber  String
+  outflowType    OutflowType
+  entityId       String
+  salesChannelId String?
+  orderReference String?
+  notes          String?
+  createdById    String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  createdBy      User               @relation(fields: [createdById], references: [id])
+  entity         Entity             @relation(fields: [entityId], references: [id])
+  salesChannel   SalesChannel?      @relation(fields: [salesChannelId], references: [id])
+  tenant         Tenant             @relation(fields: [tenantId], references: [id])
+  items          OutflowItem[]
+  packaging      OutflowPackaging[]
+
+  @@unique([tenantId, outflowNumber])
+  @@index([tenantId])
+  @@map("inventory_outflows")
+}
+
+model OutflowItem {
+  id             String           @id @default(cuid())
+  outflowId      String
+  productId      String
+  batchId        String?
+  quantity       Int
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  inventoryBatch InventoryBatch?  @relation(fields: [batchId], references: [id])
+  outflow        InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
+  product        Product          @relation(fields: [productId], references: [id])
+
+  @@map("outflow_items")
+}
+
+model OutflowPackaging {
+  id          String           @id @default(cuid())
+  outflowId   String
+  description String
+  quantity    Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  outflow     InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
+
+  @@map("outflow_packaging")
+}
+
+model StockAdjustment {
+  id             String         @id @default(cuid())
+  tenantId       String
+  adjustmentType AdjustmentType
+  productId      String
+  batchId        String?
+  quantity       Int
+  reason         String
+  approvedById   String?
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  createdBy      User           @relation(fields: [createdById], references: [id])
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("stock_adjustments")
+}
+
+model Production {
+  id               String               @id @default(cuid())
+  tenantId         String
+  productionNumber String
+  productionType   ProductionType
+  status           ProductionStatus     @default(planned)
+  outputProductId  String?
+  outputQuantity   Int?
+  startDate        DateTime?
+  endDate          DateTime?
+  notes            String?
+  createdById      String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  materials        ProductionMaterial[]
+  createdBy        User                 @relation("ProductionCreatedBy", fields: [createdById], references: [id])
+  tenant           Tenant               @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, productionNumber])
+  @@index([tenantId])
+  @@map("productions")
+}
+
+model ProductionMaterial {
+  id           String     @id @default(cuid())
+  productionId String
+  productId    String
+  quantity     Int
+  batchId      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  product      Product    @relation(fields: [productId], references: [id])
+  production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@map("production_materials")
+}
+
+model Payment {
+  id               String          @id @default(cuid())
+  tenantId         String
+  paymentNumber    String
+  purchaseOrderId  String?
+  supplierId       String?
+  entityId         String
+  paymentModeId    String?
+  externalVendorId String?
+  amount           Decimal         @db.Decimal(14, 2)
+  paymentDate      DateTime
+  status           PaymentStatus   @default(pending)
+  reference        String?
+  notes            String?
+  createdById      String
+  approvedById     String?
+  approvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  approvedBy       User?           @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
+  createdBy        User            @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  entity           Entity          @relation(fields: [entityId], references: [id])
+  externalVendor   ExternalVendor? @relation(fields: [externalVendorId], references: [id])
+  paymentMode      PaymentMode?    @relation(fields: [paymentModeId], references: [id])
+  purchaseOrder    PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id])
+  tenant           Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, paymentNumber])
+  @@index([tenantId])
+  @@map("payments")
+}
+
+model MarketplaceSettlement {
+  id             String       @id @default(cuid())
+  tenantId       String
+  salesChannelId String
+  settlementDate DateTime
+  grossAmount    Decimal      @db.Decimal(14, 2)
+  fees           Decimal      @default(0) @db.Decimal(14, 2)
+  netAmount      Decimal      @db.Decimal(14, 2)
+  reference      String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  salesChannel   SalesChannel @relation(fields: [salesChannelId], references: [id])
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("marketplace_settlements")
+}
+
+model CustomerInvoice {
+  id            String                @id @default(cuid())
+  tenantId      String
+  invoiceNumber String
+  customerName  String
+  customerEmail String?
+  customerPhone String?
+  totalAmount   Decimal               @db.Decimal(14, 2)
+  taxAmount     Decimal               @default(0) @db.Decimal(14, 2)
+  grandTotal    Decimal               @db.Decimal(14, 2)
+  invoiceDate   DateTime
+  dueDate       DateTime?
+  status        String                @default("unpaid")
+  notes         String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  items         CustomerInvoiceItem[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId])
+  @@map("customer_invoices")
+}
+
+model CustomerInvoiceItem {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Decimal         @db.Decimal(12, 2)
+  taxRate     Decimal         @default(0) @db.Decimal(5, 2)
+  taxAmount   Decimal         @default(0) @db.Decimal(12, 2)
+  totalAmount Decimal         @db.Decimal(14, 2)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  invoice     CustomerInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("customer_invoice_items")
+}
+
+model CustomerCredit {
+  id            String              @id @default(cuid())
+  tenantId      String
+  customerName  String
+  customerEmail String?
+  customerPhone String?
+  balance       Decimal             @default(0) @db.Decimal(14, 2)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  transactions  CreditTransaction[]
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("customer_credits")
+}
+
+model CreditTransaction {
+  id               String         @id @default(cuid())
+  customerCreditId String
+  transactionType  String
+  amount           Decimal        @db.Decimal(14, 2)
+  reference        String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  customerCredit   CustomerCredit @relation(fields: [customerCreditId], references: [id], onDelete: Cascade)
+
+  @@map("credit_transactions")
+}
+
+model ApprovalAuditLog {
+  id           String         @id @default(cuid())
+  tenantId     String
+  approvalType ApprovalType
+  referenceId  String
+  action       ApprovalAction
+  userId       String
+  reason       String?
+  createdAt    DateTime       @default(now())
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  user         User           @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, approvalType])
+  @@map("approval_audit_log")
+}
+
+model Style {
+  id               String            @id @default(cuid())
+  tenantId         String
+  styleCode        String
+  styleName        String
+  gender           String?
+  category         String?
+  sleeves          String?
+  neckShape        String?
+  backShape        String?
+  openMechanism    String?
+  padding          String?
+  chest32          Decimal?          @db.Decimal(10, 2)
+  chest34          Decimal?          @db.Decimal(10, 2)
+  chest36          Decimal?          @db.Decimal(10, 2)
+  chest38          Decimal?          @db.Decimal(10, 2)
+  chest40          Decimal?          @db.Decimal(10, 2)
+  chest42          Decimal?          @db.Decimal(10, 2)
+  chest44          Decimal?          @db.Decimal(10, 2)
+  chest46          Decimal?          @db.Decimal(10, 2)
+  chest48          Decimal?          @db.Decimal(10, 2)
+  chest50          Decimal?          @db.Decimal(10, 2)
+  length32         Decimal?          @db.Decimal(10, 2)
+  length34         Decimal?          @db.Decimal(10, 2)
+  length36         Decimal?          @db.Decimal(10, 2)
+  length38         Decimal?          @db.Decimal(10, 2)
+  length40         Decimal?          @db.Decimal(10, 2)
+  length42         Decimal?          @db.Decimal(10, 2)
+  length44         Decimal?          @db.Decimal(10, 2)
+  length46         Decimal?          @db.Decimal(10, 2)
+  length48         Decimal?          @db.Decimal(10, 2)
+  length50         Decimal?          @db.Decimal(10, 2)
+  waist32          Decimal?          @db.Decimal(10, 2)
+  waist34          Decimal?          @db.Decimal(10, 2)
+  waist36          Decimal?          @db.Decimal(10, 2)
+  waist38          Decimal?          @db.Decimal(10, 2)
+  waist40          Decimal?          @db.Decimal(10, 2)
+  waist42          Decimal?          @db.Decimal(10, 2)
+  waist44          Decimal?          @db.Decimal(10, 2)
+  waist46          Decimal?          @db.Decimal(10, 2)
+  waist48          Decimal?          @db.Decimal(10, 2)
+  waist50          Decimal?          @db.Decimal(10, 2)
+  shoulder         Decimal?          @db.Decimal(10, 2)
+  neckDepth        Decimal?          @db.Decimal(10, 2)
+  armhole          Decimal?          @db.Decimal(10, 2)
+  sleeveLength     Decimal?          @db.Decimal(10, 2)
+  notes            String?
+  status           String            @default("active")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  finishedProducts FinishedProduct[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, styleCode])
+  @@index([tenantId])
+  @@map("styles")
+}
+
+model Fabric {
+  id               String            @id @default(cuid())
+  tenantId         String
+  fabricSku        String
+  material         String
+  color            String
+  design           String?
+  work             String?
+  widthCm          Decimal?          @db.Decimal(10, 2)
+  weightPerMeter   Decimal?          @db.Decimal(10, 2)
+  costAmount       Decimal           @db.Decimal(15, 2)
+  gstRatePct       Decimal           @default(5.00) @db.Decimal(5, 2)
+  hsnCode          String?
+  uom              String            @default("Meters")
+  supplierId       String?
+  notes            String?
+  status           String            @default("active")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  supplier         Supplier?         @relation(fields: [supplierId], references: [id])
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  finishedProducts FinishedProduct[]
+
+  @@unique([tenantId, fabricSku])
+  @@index([tenantId])
+  @@map("fabrics")
+}
+
+model RawMaterial {
+  id               String    @id @default(cuid())
+  tenantId         String
+  rmSku            String
+  rmType           String
+  color            String?
+  measurementUnit  String
+  unitsPerQuantity Int
+  costPerSku       Decimal   @db.Decimal(15, 2)
+  gstRatePct       Decimal   @default(5.00) @db.Decimal(5, 2)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String    @default("active")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  supplier         Supplier? @relation(fields: [supplierId], references: [id])
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, rmSku])
+  @@index([tenantId])
+  @@map("raw_materials")
+}
+
+model Packaging {
+  id               String    @id @default(cuid())
+  tenantId         String
+  pkgSku           String
+  pkgType          String
+  description      String?
+  channel          String?
+  dimensions       String?
+  measurementUnit  String
+  unitsPerQuantity Int
+  costPerUnit      Decimal   @db.Decimal(15, 2)
+  gstRatePct       Decimal   @default(5.00) @db.Decimal(5, 2)
+  hsnCode          String?
+  supplierId       String?
+  notes            String?
+  status           String    @default("active")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  supplier         Supplier? @relation(fields: [supplierId], references: [id])
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, pkgSku])
+  @@index([tenantId])
+  @@map("packaging")
+}
+
+model FinishedProduct {
+  id              String           @id @default(cuid())
+  tenantId        String
+  parentSku       String
+  childSku        String
+  styleId         String
+  fabricId        String
+  entityId        String?
+  title           String
+  color           String
+  size            String
+  costAmount      Decimal          @db.Decimal(15, 2)
+  sellingPrice    Decimal?         @db.Decimal(15, 2)
+  mrp             Decimal?         @db.Decimal(15, 2)
+  gstRatePct      Decimal          @default(5.00) @db.Decimal(5, 2)
+  currency        String           @default("INR")
+  sellingChannels Json             @default("[]")
+  notes           String?
+  status          String           @default("active")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  entity          Entity?          @relation(fields: [entityId], references: [id])
+  fabric          Fabric           @relation(fields: [fabricId], references: [id])
+  style           Style            @relation(fields: [styleId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  media           MediaFile[]
+  amazonData      ProductAmazon?
+  flipkartData    ProductFlipkart?
+  myntraData      ProductMyntra?
+  nykaaData       ProductNykaa?
+  shopifyData     ProductShopify?
+
+  @@unique([tenantId, childSku])
+  @@index([tenantId])
+  @@index([parentSku])
+  @@index([styleId])
+  @@index([fabricId])
+  @@map("finished_products")
+}
+
+model MediaFile {
+  id              String          @id @default(cuid())
+  tenantId        String
+  entityType      String
+  entityId        String
+  fileType        String
+  fileName        String
+  filePath        String
+  fileSize        Int
+  mimeType        String
+  isPrimary       Boolean         @default(false)
+  sortOrder       Int             @default(0)
+  width           Int?
+  height          Int?
+  thumbnailPath   String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  finishedProduct FinishedProduct @relation(fields: [entityId], references: [id])
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([entityId, isPrimary])
+  @@map("media_files")
+}
+
+model ProductAmazon {
+  id                     String          @id @default(cuid())
+  finishedProductId      String          @unique
+  asin                   String?
+  parentAsin             String?
+  itemName               String?
+  brandName              String?
+  externalProductId      String?
+  recommendedBrowseNodes String?
+  modelName              String?
+  manufacturer           String?
+  productDescription     String?
+  bulletPoints           Json?
+  genericKeywords        String?
+  style                  String?
+  departmentName         String?
+  ageRangeDescription    String?
+  material               String?
+  fabricType             String?
+  numberOfItems          Int?
+  itemTypeName           String?
+  specialSize            String?
+  colorMap               String?
+  color                  String?
+  size                   String?
+  sizeMap                String?
+  itemLength             Decimal?        @db.Decimal(10, 2)
+  itemWidth              Decimal?        @db.Decimal(10, 2)
+  itemHeight             Decimal?        @db.Decimal(10, 2)
+  itemDimensionsUnit     String?
+  itemWeight             Decimal?        @db.Decimal(10, 2)
+  itemWeightUnit         String?
+  packageLength          Decimal?        @db.Decimal(10, 2)
+  packageWidth           Decimal?        @db.Decimal(10, 2)
+  packageHeight          Decimal?        @db.Decimal(10, 2)
+  packageDimensionsUnit  String?
+  packageWeight          Decimal?        @db.Decimal(10, 2)
+  packageWeightUnit      String?
+  standardPrice          Decimal?        @db.Decimal(15, 2)
+  currency               String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  finishedProduct        FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_amazon")
+}
+
+model ProductMyntra {
+  id                String          @id @default(cuid())
+  finishedProductId String          @unique
+  myntraSku         String?
+  productName       String?
+  brandName         String?
+  category          String?
+  color             String?
+  size              String?
+  price             Decimal?        @db.Decimal(15, 2)
+  mrp               Decimal?        @db.Decimal(15, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  finishedProduct   FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_myntra")
+}
+
+model ProductShopify {
+  id                String          @id @default(cuid())
+  finishedProductId String          @unique
+  shopifyProductId  String?
+  shopifyVariantId  String?
+  handle            String?
+  productName       String?
+  variantName       String?
+  price             Decimal?        @db.Decimal(15, 2)
+  compareAtPrice    Decimal?        @db.Decimal(15, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  finishedProduct   FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_shopify")
+}
+
+model ProductFlipkart {
+  id                String          @id @default(cuid())
+  finishedProductId String          @unique
+  flipkartSku       String?
+  productName       String?
+  brandName         String?
+  category          String?
+  price             Decimal?        @db.Decimal(15, 2)
+  mrp               Decimal?        @db.Decimal(15, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  finishedProduct   FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_flipkart")
+}
+
+model ProductNykaa {
+  id                String          @id @default(cuid())
+  finishedProductId String          @unique
+  nykaaSku          String?
+  productName       String?
+  brandName         String?
+  category          String?
+  price             Decimal?        @db.Decimal(15, 2)
+  mrp               Decimal?        @db.Decimal(15, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  finishedProduct   FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+
+  @@map("product_nykaa")
+}
 
 enum PurchaseType {
   finished
@@ -138,1161 +1167,4 @@ enum ProductionStatus {
   in_progress
   completed
   cancelled
-}
-
-// ============================================
-// CORE TABLES
-// ============================================
-
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users                  User[]
-  purchaseTypes          PurchaseTypeConfig[]
-  salesChannels          SalesChannel[]
-  entities               Entity[]
-  paymentModes           PaymentMode[]
-  externalVendors        ExternalVendor[]
-  suppliers              Supplier[]
-  productCategories      ProductCategory[]
-  products               Product[]
-  purchaseOrders         PurchaseOrder[]
-  grns                   GRN[]
-  inventoryBatches       InventoryBatch[]
-  stockLedger            StockLedger[]
-  inventoryOutflows      InventoryOutflow[]
-  stockAdjustments       StockAdjustment[]
-  productions            Production[]
-  payments               Payment[]
-  marketplaceSettlements MarketplaceSettlement[]
-  customerInvoices       CustomerInvoice[]
-  customerCredits        CustomerCredit[]
-  approvalAuditLogs      ApprovalAuditLog[]
-  // Product Information Module
-  styles                 Style[]
-  fabrics                Fabric[]
-  rawMaterials           RawMaterial[]
-  packaging              Packaging[]
-  finishedProducts       FinishedProduct[]
-  mediaFiles             MediaFile[]
-
-  @@map("tenants")
-}
-
-model User {
-  id             String   @id @default(cuid())
-  tenantId       String
-  supabaseUserId String?  @unique
-  email          String   @unique
-  name           String
-  role           String   @default("user")
-  isSuperAdmin   Boolean  @default(false)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant      Tenant           @relation(fields: [tenantId], references: [id])
-  permissions UserPermission[]
-
-  createdPurchaseOrders  PurchaseOrder[]    @relation("CreatedBy")
-  approvedPurchaseOrders PurchaseOrder[]    @relation("ApprovedBy")
-  createdGRNs            GRN[]              @relation("GRNCreatedBy")
-  createdPayments        Payment[]          @relation("PaymentCreatedBy")
-  approvedPayments       Payment[]          @relation("PaymentApprovedBy")
-  createdProductions     Production[]       @relation("ProductionCreatedBy")
-  approvalActions        ApprovalAuditLog[]
-  stockAdjustments       StockAdjustment[]
-  inventoryOutflows      InventoryOutflow[]
-
-  @@index([tenantId])
-  @@map("users")
-}
-
-model UserPermission {
-  id              String          @id @default(cuid())
-  userId          String
-  module          String
-  subModule       String?
-  permissionLevel PermissionLevel @default(none)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, module, subModule])
-  @@map("user_permissions")
-}
-
-model PurchaseTypeConfig {
-  id                String       @id @default(cuid())
-  tenantId          String
-  purchaseType      PurchaseType
-  name              String
-  prefix            String
-  allowedEntryModes EntryMode[]
-  trackInventory    Boolean      @default(false)
-  requiresApproval  Boolean      @default(true)
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, purchaseType])
-  @@map("purchase_types")
-}
-
-model SalesChannel {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  code      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
-  marketplaceSettlements MarketplaceSettlement[]
-  inventoryOutflows      InventoryOutflow[]
-
-  @@unique([tenantId, code])
-  @@map("sales_channels")
-}
-
-model Entity {
-  id         String     @id @default(cuid())
-  tenantId   String
-  name       String
-  type       EntityType
-  isExternal Boolean    @default(false)
-  isActive   Boolean    @default(true)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-
-  tenant            Tenant             @relation(fields: [tenantId], references: [id])
-  paymentModes      PaymentMode[]
-  purchaseOrders    PurchaseOrder[]
-  payments          Payment[]
-  inventoryOutflows InventoryOutflow[]
-  finishedProducts  FinishedProduct[]
-
-  @@unique([tenantId, name])
-  @@map("entities")
-}
-
-model PaymentMode {
-  id        String   @id @default(cuid())
-  entityId  String
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  entity   Entity    @relation(fields: [entityId], references: [id])
-  payments Payment[]
-  Tenant   Tenant?   @relation(fields: [tenantId], references: [id])
-  tenantId String?
-
-  @@unique([entityId, name])
-  @@map("payment_modes")
-}
-
-model ExternalVendor {
-  id         String             @id @default(cuid())
-  tenantId   String
-  name       String
-  code       String
-  vendorType ExternalVendorType
-  isActive   Boolean            @default(true)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  payments Payment[]
-
-  @@unique([tenantId, code])
-  @@map("external_vendors")
-}
-
-// ============================================
-// SUPPLIER & PRODUCT TABLES
-// ============================================
-
-model Supplier {
-  id                String   @id @default(cuid())
-  tenantId          String
-  name              String
-  code              String
-  email             String?
-  phone             String?
-  address           String?
-  gstNumber         String?
-  panNumber         String?
-  bankName          String?
-  bankAccountNumber String?
-  bankIfscCode      String?
-  paymentTerms      String?
-  supplyCategories  String[] @default([])
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tenant         Tenant            @relation(fields: [tenantId], references: [id])
-  contacts       SupplierContact[]
-  pricings       SupplierPricing[]
-  purchaseOrders PurchaseOrder[]
-  payments       Payment[]
-  // Product Information Module relations
-  fabrics        Fabric[]
-  rawMaterials   RawMaterial[]
-  packaging      Packaging[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@map("suppliers")
-}
-
-model SupplierContact {
-  id         String   @id @default(cuid())
-  supplierId String
-  name       String
-  email      String?
-  phone      String?
-  isPrimary  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-
-  @@map("supplier_contacts")
-}
-
-model SupplierPricing {
-  id         String    @id @default(cuid())
-  supplierId String
-  productId  String
-  unitPrice  Decimal   @db.Decimal(12, 2)
-  currency   String    @default("INR")
-  minQty     Int?
-  validFrom  DateTime?
-  validTo    DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([supplierId, productId])
-  @@map("supplier_pricing")
-}
-
-model ProductCategory {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  level     Int      @default(1)
-  parentId  String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant   Tenant            @relation(fields: [tenantId], references: [id])
-  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children ProductCategory[] @relation("CategoryHierarchy")
-  products Product[]
-
-  @@index([tenantId])
-  @@map("product_categories")
-}
-
-model Product {
-  id          String   @id @default(cuid())
-  tenantId    String
-  sku         String
-  name        String
-  description String?
-  categoryId  String?
-  unit        String   @default("pcs")
-  hsnCode     String?
-  gstRate     Decimal? @db.Decimal(5, 2)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant              Tenant               @relation(fields: [tenantId], references: [id])
-  category            ProductCategory?     @relation(fields: [categoryId], references: [id])
-  supplierPricings    SupplierPricing[]
-  poLineItems         POLineItem[]
-  poRmIssuanceItems   PORmIssuanceItem[]
-  inventoryBatches    InventoryBatch[]
-  stockLedger         StockLedger[]
-  productionMaterials ProductionMaterial[]
-  outflowItems        OutflowItem[]
-
-  @@unique([tenantId, sku])
-  @@index([tenantId])
-  @@map("products")
-}
-
-// ============================================
-// PURCHASE ORDER TABLES
-// ============================================
-
-model PurchaseOrder {
-  id               String           @id @default(cuid())
-  tenantId         String
-  poNumber         String
-  purchaseType     PurchaseType
-  supplierId       String?
-  entityId         String
-  status           POStatus         @default(draft)
-  entryMode        EntryMode
-  rawMaterialMode  RawMaterialMode?
-  totalAmount      Decimal          @default(0) @db.Decimal(14, 2)
-  taxAmount        Decimal          @default(0) @db.Decimal(14, 2)
-  grandTotal       Decimal          @default(0) @db.Decimal(14, 2)
-  notes            String?
-  expectedDelivery DateTime?
-  createdById      String
-  approvedById     String?
-  approvedAt       DateTime?
-  rejectionReason  String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-
-  tenant        Tenant               @relation(fields: [tenantId], references: [id])
-  supplier      Supplier?            @relation(fields: [supplierId], references: [id])
-  entity        Entity               @relation(fields: [entityId], references: [id])
-  createdBy     User                 @relation("CreatedBy", fields: [createdById], references: [id])
-  approvedBy    User?                @relation("ApprovedBy", fields: [approvedById], references: [id])
-  lineItems     POLineItem[]
-  freeTextItems POLineItemFreetext[]
-  refundItems   POLineItemRefund[]
-  rmIssuances   PORmIssuance[]
-  grns          GRN[]
-  payments      Payment[]
-
-  @@unique([tenantId, poNumber])
-  @@index([tenantId, status])
-  @@index([tenantId, purchaseType])
-  @@map("purchase_orders")
-}
-
-model POLineItem {
-  id              String   @id @default(cuid())
-  purchaseOrderId String
-  productId       String
-  quantity        Int
-  unitPrice       Decimal  @db.Decimal(12, 2)
-  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
-  taxAmount       Decimal  @default(0) @db.Decimal(12, 2)
-  totalAmount     Decimal  @db.Decimal(14, 2)
-  receivedQty     Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product       Product       @relation(fields: [productId], references: [id])
-  grnLineItems  GRNLineItem[]
-
-  @@map("po_line_items")
-}
-
-model POLineItemFreetext {
-  id              String   @id @default(cuid())
-  purchaseOrderId String
-  description     String
-  quantity        Int      @default(1)
-  unitPrice       Decimal  @db.Decimal(12, 2)
-  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
-  taxAmount       Decimal  @default(0) @db.Decimal(12, 2)
-  totalAmount     Decimal  @db.Decimal(14, 2)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-
-  @@map("po_line_items_freetext")
-}
-
-model POLineItemRefund {
-  id              String   @id @default(cuid())
-  purchaseOrderId String
-  customerName    String
-  orderNumber     String?
-  reason          String
-  amount          Decimal  @db.Decimal(12, 2)
-  refundMode      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-
-  @@map("po_line_items_refunds")
-}
-
-model PORmIssuance {
-  id              String   @id @default(cuid())
-  purchaseOrderId String
-  issuanceNumber  String
-  issuedAt        DateTime @default(now())
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  items         PORmIssuanceItem[]
-
-  @@map("po_rm_issuances")
-}
-
-model PORmIssuanceItem {
-  id         String   @id @default(cuid())
-  issuanceId String
-  productId  String
-  quantity   Int
-  batchId    String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  issuance       PORmIssuance    @relation(fields: [issuanceId], references: [id], onDelete: Cascade)
-  product        Product         @relation(fields: [productId], references: [id])
-  inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
-
-  @@map("po_rm_issuance_items")
-}
-
-// ============================================
-// INVENTORY TABLES
-// ============================================
-
-model GRN {
-  id              String   @id @default(cuid())
-  tenantId        String
-  grnNumber       String
-  purchaseOrderId String
-  receivedAt      DateTime @default(now())
-  notes           String?
-  createdById     String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  createdBy     User          @relation("GRNCreatedBy", fields: [createdById], references: [id])
-  lineItems     GRNLineItem[]
-
-  @@unique([tenantId, grnNumber])
-  @@index([tenantId])
-  @@map("grns")
-}
-
-model GRNLineItem {
-  id           String         @id @default(cuid())
-  grnId        String
-  poLineItemId String
-  receivedQty  Int
-  acceptedQty  Int
-  rejectedQty  Int            @default(0)
-  condition    GoodsCondition @default(good)
-  batchNumber  String?
-  expiryDate   DateTime?
-  notes        String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-
-  grn        GRN        @relation(fields: [grnId], references: [id], onDelete: Cascade)
-  poLineItem POLineItem @relation(fields: [poLineItemId], references: [id])
-
-  @@map("grn_line_items")
-}
-
-model InventoryBatch {
-  id          String    @id @default(cuid())
-  tenantId    String
-  productId   String
-  batchNumber String
-  quantity    Int       @default(0)
-  costPrice   Decimal   @db.Decimal(12, 2)
-  expiryDate  DateTime?
-  locationId  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  tenant          Tenant             @relation(fields: [tenantId], references: [id])
-  product         Product            @relation(fields: [productId], references: [id])
-  stockLedger     StockLedger[]
-  rmIssuanceItems PORmIssuanceItem[]
-  outflowItems    OutflowItem[]
-
-  @@unique([tenantId, productId, batchNumber])
-  @@index([tenantId, productId])
-  @@map("inventory_batches")
-}
-
-model StockLedger {
-  id            String       @id @default(cuid())
-  tenantId      String
-  productId     String
-  batchId       String?
-  movementType  MovementType
-  quantity      Int
-  referenceId   String?
-  referenceType String?
-  notes         String?
-  createdAt     DateTime     @default(now())
-
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  product        Product         @relation(fields: [productId], references: [id])
-  inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
-
-  @@index([tenantId, productId])
-  @@index([tenantId, movementType])
-  @@map("stock_ledger")
-}
-
-model InventoryOutflow {
-  id             String      @id @default(cuid())
-  tenantId       String
-  outflowNumber  String
-  outflowType    OutflowType
-  entityId       String
-  salesChannelId String?
-  orderReference String?
-  notes          String?
-  createdById    String
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  tenant       Tenant             @relation(fields: [tenantId], references: [id])
-  entity       Entity             @relation(fields: [entityId], references: [id])
-  salesChannel SalesChannel?      @relation(fields: [salesChannelId], references: [id])
-  createdBy    User               @relation(fields: [createdById], references: [id])
-  items        OutflowItem[]
-  packaging    OutflowPackaging[]
-
-  @@unique([tenantId, outflowNumber])
-  @@index([tenantId])
-  @@map("inventory_outflows")
-}
-
-model OutflowItem {
-  id        String   @id @default(cuid())
-  outflowId String
-  productId String
-  batchId   String?
-  quantity  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  outflow        InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
-  product        Product          @relation(fields: [productId], references: [id])
-  inventoryBatch InventoryBatch?  @relation(fields: [batchId], references: [id])
-
-  @@map("outflow_items")
-}
-
-model OutflowPackaging {
-  id          String   @id @default(cuid())
-  outflowId   String
-  description String
-  quantity    Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  outflow InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
-
-  @@map("outflow_packaging")
-}
-
-model StockAdjustment {
-  id             String         @id @default(cuid())
-  tenantId       String
-  adjustmentType AdjustmentType
-  productId      String
-  batchId        String?
-  quantity       Int
-  reason         String
-  approvedById   String?
-  createdById    String
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  tenant    Tenant @relation(fields: [tenantId], references: [id])
-  createdBy User   @relation(fields: [createdById], references: [id])
-
-  @@index([tenantId])
-  @@map("stock_adjustments")
-}
-
-// ============================================
-// PRODUCTION TABLES
-// ============================================
-
-model Production {
-  id               String           @id @default(cuid())
-  tenantId         String
-  productionNumber String
-  productionType   ProductionType
-  status           ProductionStatus @default(planned)
-  outputProductId  String?
-  outputQuantity   Int?
-  startDate        DateTime?
-  endDate          DateTime?
-  notes            String?
-  createdById      String
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-
-  tenant    Tenant               @relation(fields: [tenantId], references: [id])
-  createdBy User                 @relation("ProductionCreatedBy", fields: [createdById], references: [id])
-  materials ProductionMaterial[]
-
-  @@unique([tenantId, productionNumber])
-  @@index([tenantId])
-  @@map("productions")
-}
-
-model ProductionMaterial {
-  id           String   @id @default(cuid())
-  productionId String
-  productId    String
-  quantity     Int
-  batchId      String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  production Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
-  product    Product    @relation(fields: [productId], references: [id])
-
-  @@map("production_materials")
-}
-
-// ============================================
-// FINANCE TABLES
-// ============================================
-
-model Payment {
-  id               String        @id @default(cuid())
-  tenantId         String
-  paymentNumber    String
-  purchaseOrderId  String?
-  supplierId       String?
-  entityId         String
-  paymentModeId    String?
-  externalVendorId String?
-  amount           Decimal       @db.Decimal(14, 2)
-  paymentDate      DateTime
-  status           PaymentStatus @default(pending)
-  reference        String?
-  notes            String?
-  createdById      String
-  approvedById     String?
-  approvedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  purchaseOrder  PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
-  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
-  entity         Entity          @relation(fields: [entityId], references: [id])
-  paymentMode    PaymentMode?    @relation(fields: [paymentModeId], references: [id])
-  externalVendor ExternalVendor? @relation(fields: [externalVendorId], references: [id])
-  createdBy      User            @relation("PaymentCreatedBy", fields: [createdById], references: [id])
-  approvedBy     User?           @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
-
-  @@unique([tenantId, paymentNumber])
-  @@index([tenantId])
-  @@map("payments")
-}
-
-model MarketplaceSettlement {
-  id             String   @id @default(cuid())
-  tenantId       String
-  salesChannelId String
-  settlementDate DateTime
-  grossAmount    Decimal  @db.Decimal(14, 2)
-  fees           Decimal  @default(0) @db.Decimal(14, 2)
-  netAmount      Decimal  @db.Decimal(14, 2)
-  reference      String?
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  salesChannel SalesChannel @relation(fields: [salesChannelId], references: [id])
-
-  @@index([tenantId])
-  @@map("marketplace_settlements")
-}
-
-model CustomerInvoice {
-  id            String    @id @default(cuid())
-  tenantId      String
-  invoiceNumber String
-  customerName  String
-  customerEmail String?
-  customerPhone String?
-  totalAmount   Decimal   @db.Decimal(14, 2)
-  taxAmount     Decimal   @default(0) @db.Decimal(14, 2)
-  grandTotal    Decimal   @db.Decimal(14, 2)
-  invoiceDate   DateTime
-  dueDate       DateTime?
-  status        String    @default("unpaid")
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  tenant Tenant                @relation(fields: [tenantId], references: [id])
-  items  CustomerInvoiceItem[]
-
-  @@unique([tenantId, invoiceNumber])
-  @@index([tenantId])
-  @@map("customer_invoices")
-}
-
-model CustomerInvoiceItem {
-  id          String   @id @default(cuid())
-  invoiceId   String
-  description String
-  quantity    Int
-  unitPrice   Decimal  @db.Decimal(12, 2)
-  taxRate     Decimal  @default(0) @db.Decimal(5, 2)
-  taxAmount   Decimal  @default(0) @db.Decimal(12, 2)
-  totalAmount Decimal  @db.Decimal(14, 2)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  invoice CustomerInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
-  @@map("customer_invoice_items")
-}
-
-model CustomerCredit {
-  id            String   @id @default(cuid())
-  tenantId      String
-  customerName  String
-  customerEmail String?
-  customerPhone String?
-  balance       Decimal  @default(0) @db.Decimal(14, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant       Tenant              @relation(fields: [tenantId], references: [id])
-  transactions CreditTransaction[]
-
-  @@index([tenantId])
-  @@map("customer_credits")
-}
-
-model CreditTransaction {
-  id               String   @id @default(cuid())
-  customerCreditId String
-  transactionType  String
-  amount           Decimal  @db.Decimal(14, 2)
-  reference        String?
-  notes            String?
-  createdAt        DateTime @default(now())
-
-  customerCredit CustomerCredit @relation(fields: [customerCreditId], references: [id], onDelete: Cascade)
-
-  @@map("credit_transactions")
-}
-
-model ApprovalAuditLog {
-  id           String         @id @default(cuid())
-  tenantId     String
-  approvalType ApprovalType
-  referenceId  String
-  action       ApprovalAction
-  userId       String
-  reason       String?
-  createdAt    DateTime       @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
-
-  @@index([tenantId, approvalType])
-  @@map("approval_audit_log")
-}
-
-// ============================================
-// PRODUCT INFORMATION MODULE
-// ============================================
-
-// Style Library (Templates)
-model Style {
-  id        String @id @default(cuid())
-  tenantId  String
-  styleCode String
-  styleName String
-
-  // Product Attributes
-  gender        String?
-  category      String?
-  sleeves       String?
-  neckShape     String?
-  backShape     String?
-  openMechanism String?
-  padding       String?
-
-  // Measurements (in inches) - Chest
-  chest32 Decimal? @db.Decimal(10, 2)
-  chest34 Decimal? @db.Decimal(10, 2)
-  chest36 Decimal? @db.Decimal(10, 2)
-  chest38 Decimal? @db.Decimal(10, 2)
-  chest40 Decimal? @db.Decimal(10, 2)
-  chest42 Decimal? @db.Decimal(10, 2)
-  chest44 Decimal? @db.Decimal(10, 2)
-  chest46 Decimal? @db.Decimal(10, 2)
-  chest48 Decimal? @db.Decimal(10, 2)
-  chest50 Decimal? @db.Decimal(10, 2)
-
-  // Measurements - Length
-  length32 Decimal? @db.Decimal(10, 2)
-  length34 Decimal? @db.Decimal(10, 2)
-  length36 Decimal? @db.Decimal(10, 2)
-  length38 Decimal? @db.Decimal(10, 2)
-  length40 Decimal? @db.Decimal(10, 2)
-  length42 Decimal? @db.Decimal(10, 2)
-  length44 Decimal? @db.Decimal(10, 2)
-  length46 Decimal? @db.Decimal(10, 2)
-  length48 Decimal? @db.Decimal(10, 2)
-  length50 Decimal? @db.Decimal(10, 2)
-
-  // Measurements - Waist
-  waist32 Decimal? @db.Decimal(10, 2)
-  waist34 Decimal? @db.Decimal(10, 2)
-  waist36 Decimal? @db.Decimal(10, 2)
-  waist38 Decimal? @db.Decimal(10, 2)
-  waist40 Decimal? @db.Decimal(10, 2)
-  waist42 Decimal? @db.Decimal(10, 2)
-  waist44 Decimal? @db.Decimal(10, 2)
-  waist46 Decimal? @db.Decimal(10, 2)
-  waist48 Decimal? @db.Decimal(10, 2)
-  waist50 Decimal? @db.Decimal(10, 2)
-
-  // Other measurements
-  shoulder     Decimal? @db.Decimal(10, 2)
-  neckDepth    Decimal? @db.Decimal(10, 2)
-  armhole      Decimal? @db.Decimal(10, 2)
-  sleeveLength Decimal? @db.Decimal(10, 2)
-
-  notes     String?
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
-  finishedProducts FinishedProduct[]
-
-  @@unique([tenantId, styleCode])
-  @@index([tenantId])
-  @@map("styles")
-}
-
-// Fabric Library
-model Fabric {
-  id             String   @id @default(cuid())
-  tenantId       String
-  fabricSku      String
-  material       String
-  color          String
-  design         String?
-  work           String?
-  widthCm        Decimal? @db.Decimal(10, 2)
-  weightPerMeter Decimal? @db.Decimal(10, 2)
-  costAmount     Decimal  @db.Decimal(15, 2)
-  gstRatePct     Decimal  @default(5.00) @db.Decimal(5, 2)
-  hsnCode        String?
-  uom            String   @default("Meters")
-  supplierId     String?
-  notes          String?
-  status         String   @default("active")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
-  supplier         Supplier?         @relation(fields: [supplierId], references: [id])
-  finishedProducts FinishedProduct[]
-
-  @@unique([tenantId, fabricSku])
-  @@index([tenantId])
-  @@map("fabrics")
-}
-
-// Raw Material Library
-model RawMaterial {
-  id               String   @id @default(cuid())
-  tenantId         String
-  rmSku            String
-  rmType           String
-  color            String?
-  measurementUnit  String
-  unitsPerQuantity Int
-  costPerSku       Decimal  @db.Decimal(15, 2)
-  gstRatePct       Decimal  @default(5.00) @db.Decimal(5, 2)
-  hsnCode          String?
-  supplierId       String?
-  notes            String?
-  status           String   @default("active")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-
-  @@unique([tenantId, rmSku])
-  @@index([tenantId])
-  @@map("raw_materials")
-}
-
-// Packaging Library
-model Packaging {
-  id               String   @id @default(cuid())
-  tenantId         String
-  pkgSku           String
-  pkgType          String
-  description      String?
-  channel          String?
-  dimensions       String?
-  measurementUnit  String
-  unitsPerQuantity Int
-  costPerUnit      Decimal  @db.Decimal(15, 2)
-  gstRatePct       Decimal  @default(5.00) @db.Decimal(5, 2)
-  hsnCode          String?
-  supplierId       String?
-  notes            String?
-  status           String   @default("active")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-
-  @@unique([tenantId, pkgSku])
-  @@index([tenantId])
-  @@map("packaging")
-}
-
-// Finished Product Library (sellable products with style + fabric)
-model FinishedProduct {
-  id       String @id @default(cuid())
-  tenantId String
-
-  // SKU Structure
-  parentSku String
-  childSku  String
-
-  // Relations
-  styleId  String
-  fabricId String
-  entityId String?
-
-  // Product Attributes
-  title String
-  color String
-  size  String
-
-  // Pricing
-  costAmount   Decimal  @db.Decimal(15, 2)
-  sellingPrice Decimal? @db.Decimal(15, 2)
-  mrp          Decimal? @db.Decimal(15, 2)
-  gstRatePct   Decimal  @default(5.00) @db.Decimal(5, 2)
-  currency     String   @default("INR")
-
-  // Selling Channels (JSON array of channel codes)
-  sellingChannels Json @default("[]")
-
-  notes     String?
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant       Tenant           @relation(fields: [tenantId], references: [id])
-  style        Style            @relation(fields: [styleId], references: [id])
-  fabric       Fabric           @relation(fields: [fabricId], references: [id])
-  entity       Entity?          @relation(fields: [entityId], references: [id])
-  media        MediaFile[]
-  amazonData   ProductAmazon?
-  myntraData   ProductMyntra?
-  shopifyData  ProductShopify?
-  flipkartData ProductFlipkart?
-  nykaaData    ProductNykaa?
-
-  @@unique([tenantId, childSku])
-  @@index([tenantId])
-  @@index([parentSku])
-  @@index([styleId])
-  @@index([fabricId])
-  @@map("finished_products")
-}
-
-// Media Files for products
-model MediaFile {
-  id            String   @id @default(cuid())
-  tenantId      String
-  entityType    String
-  entityId      String
-  fileType      String
-  fileName      String
-  filePath      String
-  fileSize      Int
-  mimeType      String
-  isPrimary     Boolean  @default(false)
-  sortOrder     Int      @default(0)
-  width         Int?
-  height        Int?
-  thumbnailPath String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant          Tenant           @relation(fields: [tenantId], references: [id])
-  finishedProduct FinishedProduct? @relation(fields: [entityId], references: [id])
-
-  @@index([entityType, entityId])
-  @@index([entityId, isPrimary])
-  @@map("media_files")
-}
-
-// ============================================
-// CHANNEL-SPECIFIC PRODUCT DATA
-// ============================================
-
-// Amazon Product Data
-model ProductAmazon {
-  id                String @id @default(cuid())
-  finishedProductId String @unique
-
-  // Amazon-specific fields
-  asin                   String?
-  parentAsin             String?
-  itemName               String?
-  brandName              String?
-  externalProductId      String?
-  recommendedBrowseNodes String?
-  modelName              String?
-  manufacturer           String?
-  productDescription     String?
-  bulletPoints           Json?
-  genericKeywords        String?
-  style                  String?
-  departmentName         String?
-  ageRangeDescription    String?
-  material               String?
-  fabricType             String?
-  numberOfItems          Int?
-  itemTypeName           String?
-  specialSize            String?
-  colorMap               String?
-  color                  String?
-  size                   String?
-  sizeMap                String?
-
-  // Dimensions & Weight
-  itemLength         Decimal? @db.Decimal(10, 2)
-  itemWidth          Decimal? @db.Decimal(10, 2)
-  itemHeight         Decimal? @db.Decimal(10, 2)
-  itemDimensionsUnit String?
-  itemWeight         Decimal? @db.Decimal(10, 2)
-  itemWeightUnit     String?
-
-  // Package Dimensions
-  packageLength         Decimal? @db.Decimal(10, 2)
-  packageWidth          Decimal? @db.Decimal(10, 2)
-  packageHeight         Decimal? @db.Decimal(10, 2)
-  packageDimensionsUnit String?
-  packageWeight         Decimal? @db.Decimal(10, 2)
-  packageWeightUnit     String?
-
-  // Pricing
-  standardPrice Decimal? @db.Decimal(15, 2)
-  currency      String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-
-  @@map("product_amazon")
-}
-
-// Myntra Product Data
-model ProductMyntra {
-  id                String   @id @default(cuid())
-  finishedProductId String   @unique
-  myntraSku         String?
-  productName       String?
-  brandName         String?
-  category          String?
-  color             String?
-  size              String?
-  price             Decimal? @db.Decimal(15, 2)
-  mrp               Decimal? @db.Decimal(15, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-
-  @@map("product_myntra")
-}
-
-// Shopify Product Data
-model ProductShopify {
-  id                String   @id @default(cuid())
-  finishedProductId String   @unique
-  shopifyProductId  String?
-  shopifyVariantId  String?
-  handle            String?
-  productName       String?
-  variantName       String?
-  price             Decimal? @db.Decimal(15, 2)
-  compareAtPrice    Decimal? @db.Decimal(15, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-
-  @@map("product_shopify")
-}
-
-// Flipkart Product Data
-model ProductFlipkart {
-  id                String   @id @default(cuid())
-  finishedProductId String   @unique
-  flipkartSku       String?
-  productName       String?
-  brandName         String?
-  category          String?
-  price             Decimal? @db.Decimal(15, 2)
-  mrp               Decimal? @db.Decimal(15, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-
-  @@map("product_flipkart")
-}
-
-// Nykaa Product Data
-model ProductNykaa {
-  id                String   @id @default(cuid())
-  finishedProductId String   @unique
-  nykaaSku          String?
-  productName       String?
-  brandName         String?
-  category          String?
-  price             Decimal? @db.Decimal(15, 2)
-  mrp               Decimal? @db.Decimal(15, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  finishedProduct FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-
-  @@map("product_nykaa")
 }

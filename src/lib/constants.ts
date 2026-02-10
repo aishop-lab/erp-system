@@ -1,4 +1,4 @@
-import { PurchaseType, POStatus, PaymentStatus, ProductionStatus } from '@/types/enums'
+import { PurchaseType, POStatus, PaymentStatus, ProductionStatus, EntryMode, RawMaterialMode } from '@/types/enums'
 import type { NavItem, StatusMap } from '@/types'
 
 export const MODULES = {
@@ -136,6 +136,18 @@ export const PURCHASE_TYPE_LABELS: Record<string, string> = {
   [PurchaseType.FEEDBACK]: 'Feedback',
   [PurchaseType.MISC]: 'Miscellaneous',
   [PurchaseType.CUSTOMER_REFUNDS]: 'Customer Refunds',
+}
+
+export const ENTRY_MODE_LABELS: Record<string, string> = {
+  [EntryMode.CATALOG]: 'Catalog Entry',
+  [EntryMode.FREE_TEXT]: 'Free Text Entry',
+  [EntryMode.LINK_FINISHED]: 'Linked to Finished Products',
+  [EntryMode.SPECIAL]: 'Special Entry',
+}
+
+export const RAW_MATERIAL_MODE_LABELS: Record<string, string> = {
+  [RawMaterialMode.DIRECT_PURCHASE]: 'Direct Purchase',
+  [RawMaterialMode.RAW_MATERIALS_ISSUED]: 'Raw Materials Issued (Job Work)',
 }
 
 export const PO_STATUS_MAP: StatusMap = {
