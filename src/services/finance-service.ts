@@ -1,34 +1,53 @@
 import { prisma } from '@/lib/prisma'
-import { PaymentStatus } from '@prisma/client'
-import type { CreatePaymentInput } from '@/validators/payment'
+import { PaymentStatus, POStatus } from '@prisma/client'
+import type { CreatePaymentInput, ExecutePaymentInput } from '@/validators/payment'
 
 export async function getPayments(tenantId: string, params?: {
+  search?: string
   status?: PaymentStatus
   supplierId?: string
   entityId?: string
   page?: number
   pageSize?: number
 }) {
-  const { status, supplierId, entityId, page = 1, pageSize = 10 } = params || {}
+  const { search, status, supplierId, entityId, page = 1, pageSize = 10 } = params || {}
 
   const where = {
     tenantId,
     ...(status && { status }),
     ...(supplierId && { supplierId }),
     ...(entityId && { entityId }),
+    ...(search && {
+      OR: [
+        { paymentNumber: { contains: search, mode: 'insensitive' as const } },
+        { purchaseOrder: { poNumber: { contains: search, mode: 'insensitive' as const } } },
+        { supplier: { name: { contains: search, mode: 'insensitive' as const } } },
+      ],
+    }),
   }
 
   const [payments, total] = await Promise.all([
     prisma.payment.findMany({
       where,
       include: {
-        purchaseOrder: true,
-        supplier: true,
-        entity: true,
-        paymentMode: true,
-        externalVendor: true,
-        createdBy: true,
-        approvedBy: true,
+        purchaseOrder: {
+          select: { id: true, poNumber: true, purchaseType: true, grandTotal: true },
+        },
+        supplier: {
+          select: { id: true, code: true, name: true },
+        },
+        entity: {
+          select: { id: true, name: true },
+        },
+        paymentMode: {
+          select: { id: true, name: true },
+        },
+        createdBy: {
+          select: { id: true, name: true },
+        },
+        approvedBy: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
@@ -54,20 +73,31 @@ export async function getPaymentById(id: string, tenantId: string) {
         include: {
           supplier: true,
           entity: true,
+          lineItems: true,
+          grns: {
+            select: { id: true, grnNumber: true, receivedAt: true },
+          },
         },
       },
       supplier: true,
-      entity: true,
+      entity: {
+        include: {
+          paymentModes: {
+            where: { isActive: true },
+            orderBy: { name: 'asc' },
+          },
+        },
+      },
       paymentMode: true,
       externalVendor: true,
-      createdBy: true,
-      approvedBy: true,
+      createdBy: { select: { id: true, name: true } },
+      approvedBy: { select: { id: true, name: true } },
+      executedBy: { select: { id: true, name: true } },
     },
   })
 }
 
 export async function createPayment(tenantId: string, userId: string, data: CreatePaymentInput) {
-  // Generate payment number
   const year = new Date().getFullYear().toString().slice(-2)
   const month = (new Date().getMonth() + 1).toString().padStart(2, '0')
 
@@ -121,7 +151,11 @@ export async function approvePayment(
   reason?: string
 ) {
   const payment = await prisma.payment.findFirst({
-    where: { id, tenantId, status: PaymentStatus.pending },
+    where: {
+      id,
+      tenantId,
+      status: { in: [PaymentStatus.pending, PaymentStatus.pending_approval] },
+    },
   })
 
   if (!payment) {
@@ -129,16 +163,20 @@ export async function approvePayment(
   }
 
   return prisma.$transaction(async (tx) => {
+    const newStatus = action === 'approve'
+      ? PaymentStatus.approved
+      : PaymentStatus.rejected
+
     const updatedPayment = await tx.payment.update({
       where: { id },
       data: {
-        status: action === 'approve' ? PaymentStatus.paid : PaymentStatus.pending,
+        status: newStatus,
         approvedById: action === 'approve' ? userId : null,
         approvedAt: action === 'approve' ? new Date() : null,
+        rejectionReason: action === 'reject' ? reason : null,
       },
     })
 
-    // Log the approval action
     await tx.approvalAuditLog.create({
       data: {
         tenantId,
@@ -150,11 +188,59 @@ export async function approvePayment(
       },
     })
 
-    // If payment approved and linked to PO, update PO status
-    if (action === 'approve' && payment.purchaseOrderId) {
+    // Update PO status based on action
+    if (payment.purchaseOrderId) {
+      if (action === 'approve') {
+        await tx.purchaseOrder.update({
+          where: { id: payment.purchaseOrderId },
+          data: { status: POStatus.payment_approved },
+        })
+      }
+      // If rejected, PO stays at payment_pending for re-reconciliation
+    }
+
+    return updatedPayment
+  })
+}
+
+export async function executePayment(
+  id: string,
+  tenantId: string,
+  userId: string,
+  data: ExecutePaymentInput
+) {
+  const payment = await prisma.payment.findFirst({
+    where: { id, tenantId, status: PaymentStatus.approved },
+  })
+
+  if (!payment) {
+    throw new Error('Payment not found or not approved for execution')
+  }
+
+  const netAmount = data.amountPaid - (data.tdsDeducted || 0)
+
+  return prisma.$transaction(async (tx) => {
+    const updatedPayment = await tx.payment.update({
+      where: { id },
+      data: {
+        paymentModeId: data.paymentModeId,
+        transactionReference: data.transactionReference,
+        amountPaid: data.amountPaid,
+        tdsDeducted: data.tdsDeducted || 0,
+        netAmountPaid: netAmount,
+        paymentProof: data.paymentProof,
+        executionRemarks: data.remarks,
+        executedById: userId,
+        executedAt: new Date(),
+        status: PaymentStatus.executed,
+      },
+    })
+
+    // Close the PO
+    if (payment.purchaseOrderId) {
       await tx.purchaseOrder.update({
         where: { id: payment.purchaseOrderId },
-        data: { status: 'paid' },
+        data: { status: POStatus.paid },
       })
     }
 

@@ -62,11 +62,7 @@ export async function getPurchaseOrderById(id: string, tenantId: string) {
       entity: true,
       createdBy: true,
       approvedBy: true,
-      lineItems: {
-        include: {
-          product: true,
-        },
-      },
+      lineItems: true,
       freeTextItems: true,
       refundItems: true,
       rmIssuances: {
@@ -114,37 +110,73 @@ export async function createPurchaseOrder(
   userId: string,
   data: CreatePurchaseOrderInput
 ) {
+  // 🔍 DIAGNOSTIC LOGGING - See what data is coming in
+  console.log('🔍 Service received data:', {
+    purchaseType: data.purchaseType,
+    supplierId: data.supplierId,
+    entryMode: data.entryMode,
+    rawMaterialMode: data.rawMaterialMode,
+    hasLineItems: !!data.lineItems,
+    lineItemsCount: data.lineItems?.length || 0,
+    hasFreeTextItems: !!data.freeTextItems,
+    hasRefundItems: !!data.refundItems,
+  })
+
+  // Log first line item to see structure
+  if (data.lineItems && data.lineItems.length > 0) {
+    console.log('🔍 First line item structure:', JSON.stringify(data.lineItems[0], null, 2))
+  }
+
   const { lineItems, freeTextItems, refundItems, ...poData } = data
 
   const poNumber = await generatePONumber(tenantId, data.purchaseType)
+  console.log('✅ Generated PO Number:', poNumber)
 
   // Calculate totals
   let totalAmount = 0
   let taxAmount = 0
 
   if (lineItems) {
+    console.log('💰 Calculating line items totals...')
     for (const item of lineItems) {
+      // Log each item being processed
+      console.log('Processing item:', {
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate
+      })
+
       const itemTotal = item.quantity * item.unitPrice
       const itemTax = itemTotal * ((item.taxRate || 0) / 100)
       totalAmount += itemTotal
       taxAmount += itemTax
     }
+    console.log('Line items totals:', { totalAmount, taxAmount })
   }
 
   if (freeTextItems) {
+    console.log('💰 Calculating free text items totals...')
     for (const item of freeTextItems) {
       const itemTotal = (item.quantity || 1) * item.unitPrice
       const itemTax = itemTotal * ((item.taxRate || 0) / 100)
       totalAmount += itemTotal
       taxAmount += itemTax
     }
+    console.log('Free text items totals:', { totalAmount, taxAmount })
   }
 
   if (refundItems) {
+    console.log('💰 Calculating refund items totals...')
     for (const item of refundItems) {
       totalAmount += item.amount
     }
+    console.log('Refund items totals:', { totalAmount })
   }
+
+  console.log('📊 Final totals:', { totalAmount, taxAmount, grandTotal: totalAmount + taxAmount })
+
+  console.log('💾 Creating PO in database...')
 
   return prisma.purchaseOrder.create({
     data: {
@@ -158,6 +190,7 @@ export async function createPurchaseOrder(
       lineItems: lineItems ? {
         create: lineItems.map((item) => ({
           productId: item.productId,
+          productType: data.purchaseType,  // ✅ ADD THIS
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           taxRate: item.taxRate || 0,
@@ -183,9 +216,7 @@ export async function createPurchaseOrder(
       supplier: true,
       entity: true,
       createdBy: true,
-      lineItems: {
-        include: { product: true },
-      },
+      lineItems: true,
       freeTextItems: true,
       refundItems: true,
     },

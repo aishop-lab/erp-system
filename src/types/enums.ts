@@ -80,8 +80,12 @@ export enum AdjustmentType {
 }
 
 export enum PaymentStatus {
-  PAID = 'paid',
   PENDING = 'pending',
+  PENDING_APPROVAL = 'pending_approval',
+  APPROVED = 'approved',
+  EXECUTED = 'executed',
+  REJECTED = 'rejected',
+  PAID = 'paid',
   COD = 'cod',
 }
 

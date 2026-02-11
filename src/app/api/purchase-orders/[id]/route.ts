@@ -122,7 +122,7 @@ export async function PUT(
     // Update in transaction
     const updatedPO = await prisma.$transaction(async (tx) => {
       // Delete existing line items
-      await tx.pOLineItem.deleteMany({ where: { purchaseOrderId: id } })
+      await tx.pOLineItem.deleteMany({ where: { poId: id } })
       await tx.pOLineItemFreetext.deleteMany({ where: { purchaseOrderId: id } })
       await tx.pOLineItemRefund.deleteMany({ where: { purchaseOrderId: id } })
 
@@ -164,7 +164,7 @@ export async function PUT(
         include: {
           supplier: true,
           entity: true,
-          lineItems: { include: { product: true } },
+          lineItems: true,
           freeTextItems: true,
           refundItems: true,
         },

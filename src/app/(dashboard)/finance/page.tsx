@@ -7,7 +7,7 @@ export default function FinancePage() {
     <div className="space-y-6">
       <PageHeader
         title="Finance"
-        description="Manage payments, settlements, and invoices"
+        description="Manage reconciliation, payments, settlements, and invoices"
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Finance' },
@@ -15,6 +15,18 @@ export default function FinancePage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Link href="/finance/reconciliation">
+          <Card className="cursor-pointer hover:border-primary transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Reconciliation</CardTitle>
+              <CardDescription>PO, GRN &amp; invoice matching</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Three-way match &amp; submit for payment</p>
+            </CardContent>
+          </Card>
+        </Link>
+
         <Link href="/finance/payments">
           <Card className="cursor-pointer hover:border-primary transition-colors">
             <CardHeader className="pb-2">
@@ -22,8 +34,7 @@ export default function FinancePage() {
               <CardDescription>Supplier payments</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">0</p>
-              <p className="text-xs text-muted-foreground">Pending</p>
+              <p className="text-xs text-muted-foreground">Approve &amp; execute payments</p>
             </CardContent>
           </Card>
         </Link>
@@ -35,8 +46,7 @@ export default function FinancePage() {
               <CardDescription>Marketplace settlements</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">0</p>
-              <p className="text-xs text-muted-foreground">This month</p>
+              <p className="text-xs text-muted-foreground">Coming soon</p>
             </CardContent>
           </Card>
         </Link>
@@ -48,21 +58,7 @@ export default function FinancePage() {
               <CardDescription>Customer invoices</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">0</p>
-              <p className="text-xs text-muted-foreground">Outstanding</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/finance/credits">
-          <Card className="cursor-pointer hover:border-primary transition-colors">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Store Credits</CardTitle>
-              <CardDescription>Customer credits</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">0</p>
-              <p className="text-xs text-muted-foreground">Active accounts</p>
+              <p className="text-xs text-muted-foreground">Coming soon</p>
             </CardContent>
           </Card>
         </Link>

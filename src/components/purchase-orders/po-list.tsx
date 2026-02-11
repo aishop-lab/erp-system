@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Eye, MoreHorizontal, FileText, Trash2 } from 'lucide-react'
+import { Eye, MoreHorizontal, FileText, FileCheck, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -242,6 +242,14 @@ export function POList({
                               View
                             </Link>
                           </DropdownMenuItem>
+                          {po.status === POStatus.GOODS_RECEIVED && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/finance/reconciliation/${po.id}`}>
+                                <FileCheck className="mr-2 h-4 w-4" />
+                                Reconcile
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
                           {po.status === POStatus.DRAFT && (
                             <>
                               <DropdownMenuItem asChild>

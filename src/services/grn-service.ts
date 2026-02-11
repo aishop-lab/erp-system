@@ -36,7 +36,6 @@ export async function getEligiblePOs(tenantId: string, params?: {
     status: {
       in: [POStatus.approved, POStatus.partially_received, POStatus.rm_issued_pending_goods] as POStatus[],
     },
-    // Only catalog-based POs have line items for GRN
     lineItems: {
       some: {},
     },
@@ -57,8 +56,8 @@ export async function getEligiblePOs(tenantId: string, params?: {
         },
         lineItems: {
           include: {
-            product: {
-              select: { id: true, sku: true, name: true },
+            grnLineItems: {
+              select: { receivedQty: true },
             },
           },
         },
@@ -70,14 +69,21 @@ export async function getEligiblePOs(tenantId: string, params?: {
     prisma.purchaseOrder.count({ where }),
   ])
 
-  // Add remaining quantity info
+  // Add remaining quantity info (computed from GRNLineItem aggregation)
   const data = purchaseOrders.map(po => ({
     ...po,
-    lineItems: po.lineItems.map(item => ({
-      ...item,
-      remainingQty: item.quantity - item.receivedQty,
-    })),
-    hasRemainingItems: po.lineItems.some(item => item.quantity > item.receivedQty),
+    lineItems: po.lineItems.map(item => {
+      const receivedQty = item.grnLineItems.reduce((sum, g) => sum + g.receivedQty, 0)
+      return {
+        ...item,
+        receivedQty,
+        remainingQty: Number(item.quantity) - receivedQty,
+      }
+    }),
+    hasRemainingItems: po.lineItems.some(item => {
+      const received = item.grnLineItems.reduce((sum, g) => sum + g.receivedQty, 0)
+      return Number(item.quantity) > received
+    }),
   }))
 
   return {
@@ -104,9 +110,6 @@ export async function getPOForGRN(poId: string, tenantId: string) {
       },
       lineItems: {
         include: {
-          product: {
-            select: { id: true, sku: true, name: true },
-          },
           grnLineItems: {
             select: {
               receivedQty: true,
@@ -121,7 +124,7 @@ export async function getPOForGRN(poId: string, tenantId: string) {
 
   if (!po) return null
 
-  // Calculate remaining quantities per line item
+  // Calculate remaining quantities per line item from GRNLineItem aggregation
   const lineItems = po.lineItems.map(item => {
     const totalReceived = item.grnLineItems.reduce(
       (sum, grn) => sum + grn.receivedQty, 0
@@ -129,12 +132,12 @@ export async function getPOForGRN(poId: string, tenantId: string) {
     return {
       id: item.id,
       productId: item.productId,
-      product: item.product,
-      quantity: item.quantity,
+      productType: item.productType,
+      quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
       taxRate: Number(item.taxRate),
       receivedQty: totalReceived,
-      remainingQty: item.quantity - totalReceived,
+      remainingQty: Number(item.quantity) - totalReceived,
     }
   })
 
@@ -166,7 +169,13 @@ export async function createGRN(
       },
     },
     include: {
-      lineItems: true,
+      lineItems: {
+        include: {
+          grnLineItems: {
+            select: { receivedQty: true },
+          },
+        },
+      },
     },
   })
 
@@ -181,7 +190,8 @@ export async function createGRN(
       throw new Error(`PO line item ${item.poLineItemId} not found`)
     }
 
-    const remaining = poLine.quantity - poLine.receivedQty
+    const previouslyReceived = poLine.grnLineItems.reduce((sum, g) => sum + g.receivedQty, 0)
+    const remaining = Number(poLine.quantity) - previouslyReceived
     if (item.receivedQty > remaining) {
       throw new Error(
         `Received qty (${item.receivedQty}) exceeds remaining qty (${remaining}) for item ${poLine.id}`
@@ -225,26 +235,16 @@ export async function createGRN(
       },
     })
 
-    // 2. Update PO line item receivedQty values
-    for (const item of lineItems) {
-      await tx.pOLineItem.update({
-        where: { id: item.poLineItemId },
-        data: {
-          receivedQty: {
-            increment: item.receivedQty,
-          },
-        },
-      })
-    }
-
-    // 3. Create inventory batches and stock ledger entries for accepted items
+    // 2. Create inventory batches and stock ledger entries for accepted items
     for (const item of lineItems) {
       if (item.acceptedQty <= 0) continue
 
       const poLine = po.lineItems.find(li => li.id === item.poLineItemId)!
+      if (!poLine.productId) continue
+
       const batchNumber = item.batchNumber || grnNumber
 
-      // Upsert inventory batch (may receive same product in multiple GRNs)
+      // Upsert inventory batch
       const batch = await tx.inventoryBatch.upsert({
         where: {
           tenantId_productId_batchNumber: {
@@ -264,7 +264,7 @@ export async function createGRN(
           batchNumber,
           quantity: item.acceptedQty,
           costPrice: poLine.unitPrice,
-          expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+          expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
         },
       })
 
@@ -283,15 +283,24 @@ export async function createGRN(
       })
     }
 
-    // 4. Determine new PO status
-    const updatedPOLineItems = await tx.pOLineItem.findMany({
-      where: { purchaseOrderId },
+    // 3. Determine new PO status by aggregating GRNLineItems for all PO line items
+    const allPoLineItems = await tx.pOLineItem.findMany({
+      where: { poId: purchaseOrderId },
+      include: {
+        grnLineItems: {
+          select: { receivedQty: true },
+        },
+      },
     })
 
-    const allFullyReceived = updatedPOLineItems.every(
-      li => li.receivedQty >= li.quantity
-    )
-    const someReceived = updatedPOLineItems.some(li => li.receivedQty > 0)
+    const allFullyReceived = allPoLineItems.every(li => {
+      const totalReceived = li.grnLineItems.reduce((sum, g) => sum + g.receivedQty, 0)
+      return totalReceived >= Number(li.quantity)
+    })
+    const someReceived = allPoLineItems.some(li => {
+      const totalReceived = li.grnLineItems.reduce((sum, g) => sum + g.receivedQty, 0)
+      return totalReceived > 0
+    })
 
     let newPOStatus: POStatus
     if (allFullyReceived) {
@@ -299,7 +308,7 @@ export async function createGRN(
     } else if (someReceived) {
       newPOStatus = POStatus.partially_received
     } else {
-      newPOStatus = po.status // Keep current status (shouldn't reach here)
+      newPOStatus = po.status
     }
 
     if (newPOStatus !== po.status) {
@@ -386,13 +395,7 @@ export async function getGRNById(id: string, tenantId: string) {
       },
       lineItems: {
         include: {
-          poLineItem: {
-            include: {
-              product: {
-                select: { id: true, sku: true, name: true },
-              },
-            },
-          },
+          poLineItem: true,
         },
       },
     },

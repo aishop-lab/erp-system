@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-09 (PO Workflow Refinement + Cascading Dropdown for All Product Types)
+> **Last Updated:** 2026-02-11 (Finance Module - Reconciliation + Payments + Admin Approvals)
 
 ## Overview
 
@@ -119,6 +119,9 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | RawMaterial Lookup | GET `/api/product-info/raw-materials/{types,colors,lookup}` |
 | Packaging Lookup | GET `/api/product-info/packaging/{types,channels,dimensions,lookup}` |
 | Purchase Orders | CRUD `/api/purchase-orders/[id]`, POST `[id]/submit`, `[id]/approve` |
+| Admin Approvals | GET `/api/admin/approvals/po`, POST `/api/admin/approvals/po/[id]/approve` |
+| Reconciliation | GET `/api/finance/reconciliation`, GET/POST `[poId]`, POST `[poId]/submit` |
+| Payments | GET `/api/finance/payments`, GET `[id]`, POST `[id]/approve`, POST `[id]/execute` |
 
 ---
 
@@ -242,9 +245,9 @@ const { id } = await params
 **Status Flow:** draft → pending_approval → approved → (GRN flow)
 
 ### Not Yet Implemented
-- Slice 5: GRN & Inventory
+- Slice 5: GRN & Inventory (API routes done, UI pending)
 - Slice 6: Production
-- Slice 7: Finance
+- Slice 7: Finance (Reconciliation + Payments done; Settlements, Invoices, Credits pending)
 - Channel-specific UIs (Amazon, Myntra fields)
 - Bulk operations, CSV import for products
 
@@ -269,6 +272,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ---
 
 ## Changelog
+
+### 2026-02-11
+- **Finance Module (Reconciliation + Payments)**
+- Schema: PO.entityId optional, reconciliation fields on PO, enhanced Payment model, new PaymentStatus values
+- Admin Approvals API: GET/POST `/api/admin/approvals/po/[id]/approve` with audit logging
+- Reconciliation: three-way match (PO vs GRN vs Invoice), entity assignment, payment creation
+- Payments: approval workflow (pending_approval → approved → executed), execution with TDS
+- 9 new API endpoints, 5 UI components, 6 pages
+- PO integration: "Reconcile" button on goods_received POs
+- Fixed POLineItem type errors (no product relation, receivedQty from GRNLineItem aggregation)
 
 ### 2026-02-09
 - **Cascading Dropdown for Line Items**

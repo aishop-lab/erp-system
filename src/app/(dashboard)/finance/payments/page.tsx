@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/shared/page-header'
-import { EmptyState } from '@/components/shared/empty-state'
+import { PaymentList } from '@/components/finance/payment-list'
 
 export default function PaymentsPage() {
   return (
@@ -14,10 +14,7 @@ export default function PaymentsPage() {
         ]}
       />
 
-      <EmptyState
-        title="No payments"
-        description="Payments will appear here when purchase orders are ready for payment."
-      />
+      <PaymentList />
     </div>
   )
 }

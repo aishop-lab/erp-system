@@ -28,7 +28,9 @@ export const createPurchaseOrderSchema = z.object({
   supplierId: z.string().cuid().optional().nullable(),
   entryMode: z.nativeEnum(EntryMode),
   rawMaterialMode: z.nativeEnum(RawMaterialMode).optional().nullable(),
-  notes: z.string().max(1000).optional(),
+  // ✅ FIX: Accept null or undefined for notes
+  notes: z.string().max(1000).optional().nullable(),
+  // ✅ FIX: Accept null or undefined for expectedDelivery
   expectedDelivery: z.string().datetime().optional().nullable(),
   lineItems: z.array(poLineItemSchema).optional(),
   freeTextItems: z.array(poFreeTextItemSchema).optional(),

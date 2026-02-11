@@ -34,7 +34,17 @@ export const settlementSchema = z.object({
   notes: z.string().max(1000).optional(),
 })
 
+export const executePaymentSchema = z.object({
+  paymentModeId: z.string().cuid('Payment mode is required'),
+  transactionReference: z.string().min(1, 'Transaction reference is required').max(200),
+  amountPaid: z.coerce.number().min(0.01, 'Amount must be positive'),
+  tdsDeducted: z.coerce.number().min(0).default(0),
+  paymentProof: z.string().optional(),
+  remarks: z.string().max(1000).optional(),
+})
+
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>
 export type UpdatePaymentInput = z.infer<typeof updatePaymentSchema>
 export type ApprovePaymentInput = z.infer<typeof approvePaymentSchema>
+export type ExecutePaymentInput = z.infer<typeof executePaymentSchema>
 export type SettlementInput = z.infer<typeof settlementSchema>

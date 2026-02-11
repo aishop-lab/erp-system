@@ -144,6 +144,7 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
 
   const isDraft = purchaseOrder.status === POStatus.DRAFT
   const isPendingApproval = purchaseOrder.status === POStatus.PENDING_APPROVAL
+  const isGoodsReceived = purchaseOrder.status === POStatus.GOODS_RECEIVED
 
   return (
     <div className="space-y-6">
@@ -187,6 +188,15 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
                 Approve
               </Button>
             </>
+          )}
+
+          {isGoodsReceived && (
+            <Button asChild>
+              <Link href={`/finance/reconciliation/${purchaseOrder.id}`}>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Reconcile
+              </Link>
+            </Button>
           )}
 
           <Button variant="outline" onClick={handlePrint}>

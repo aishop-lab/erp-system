@@ -67,29 +67,121 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
+    // Safe logging
+    console.log('📥 PO Request received')
+    console.log('User ID:', currentUser.id)
+    console.log('Tenant ID:', currentUser.tenantId)
+    console.log('Purchase Type:', body.purchaseType)
+    console.log('Supplier ID:', body.supplierId)
+    console.log('Line Items Count:', body.lineItems?.length || 0)
+
     // Validate input
-    const validatedData = createPurchaseOrderSchema.parse(body)
+    let validatedData
+    try {
+      validatedData = createPurchaseOrderSchema.parse(body)
+      console.log('✅ Validation passed')
+    } catch (validationError) {
+      console.error('❌ Validation failed')
+      if (validationError instanceof z.ZodError) {
+        console.error('Validation errors:', JSON.stringify(validationError.errors, null, 2))
+        return NextResponse.json(
+          {
+            error: 'Validation failed',
+            details: validationError.errors,
+            message: 'Please check all required fields are filled correctly'
+          },
+          { status: 400 }
+        )
+      }
+      throw validationError
+    }
 
     // Create purchase order
+    console.log('🔨 Creating purchase order via service...')
     const purchaseOrder = await createPurchaseOrder(
       currentUser.tenantId,
       currentUser.id,
       validatedData
     )
 
-    return NextResponse.json(purchaseOrder, { status: 201 })
-  } catch (error) {
-    console.error('Error creating purchase order:', error)
+    console.log('✅ PO Created successfully:', purchaseOrder.poNumber)
 
+    return NextResponse.json(purchaseOrder, { status: 201 })
+
+  } catch (error: any) {
+    // Safe error logging - avoid circular references
+    console.error('❌ PO Creation Error occurred')
+    console.error('Error name:', error?.name)
+    console.error('Error message:', error?.message)
+
+    // Only log stack in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error stack:', error?.stack)
+    }
+
+    // Check for specific error types
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
+        {
+          error: 'Validation failed',
+          details: error.errors,
+          message: 'Please check all required fields'
+        },
         { status: 400 }
       )
     }
 
+    // Prisma errors
+    if (error?.code) {
+      console.error('Prisma error code:', error.code)
+
+      if (error.code === 'P2002') {
+        return NextResponse.json(
+          {
+            error: 'Duplicate entry',
+            message: 'This PO number or unique field already exists'
+          },
+          { status: 409 }
+        )
+      }
+
+      if (error.code === 'P2003') {
+        return NextResponse.json(
+          {
+            error: 'Foreign key constraint failed',
+            message: 'One of the selected items (supplier, product) does not exist'
+          },
+          { status: 400 }
+        )
+      }
+
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          {
+            error: 'Record not found',
+            message: 'Could not find the specified record'
+          },
+          { status: 404 }
+        )
+      }
+
+      // Generic Prisma error
+      return NextResponse.json(
+        {
+          error: 'Database error',
+          message: 'A database error occurred. Please contact support.',
+          code: error.code
+        },
+        { status: 500 }
+      )
+    }
+
+    // Return error response
     return NextResponse.json(
-      { error: 'Failed to create purchase order' },
+      {
+        error: 'Failed to create purchase order',
+        message: error?.message || 'An unexpected error occurred. Please try again.',
+      },
       { status: 500 }
     )
   }

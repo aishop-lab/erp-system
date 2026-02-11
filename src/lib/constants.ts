@@ -165,8 +165,12 @@ export const PO_STATUS_MAP: StatusMap = {
 }
 
 export const PAYMENT_STATUS_MAP: StatusMap = {
+  [PaymentStatus.PENDING]: { label: 'Pending', variant: 'secondary' },
+  [PaymentStatus.PENDING_APPROVAL]: { label: 'Pending Approval', variant: 'warning' },
+  [PaymentStatus.APPROVED]: { label: 'Approved', variant: 'success' },
+  [PaymentStatus.EXECUTED]: { label: 'Executed', variant: 'success' },
+  [PaymentStatus.REJECTED]: { label: 'Rejected', variant: 'destructive' },
   [PaymentStatus.PAID]: { label: 'Paid', variant: 'success' },
-  [PaymentStatus.PENDING]: { label: 'Pending', variant: 'warning' },
   [PaymentStatus.COD]: { label: 'COD', variant: 'secondary' },
 }
 
@@ -231,10 +235,11 @@ export const NAVIGATION: NavItem[] = [
     icon: 'Wallet',
     module: MODULES.FINANCE,
     children: [
+      { title: 'Reconciliation', href: '/finance/reconciliation' },
+      { title: 'Payments', href: '/finance/payments' },
       { title: 'Fulton', href: '/finance/fulton', subModule: SUB_MODULES.FINANCE.FULTON },
       { title: 'MSE', href: '/finance/mse' },
       { title: 'SNA', href: '/finance/sna' },
-      { title: 'Payments', href: '/finance/payments' },
       { title: 'Settlements', href: '/finance/settlements' },
       { title: 'Invoices', href: '/finance/invoices' },
     ],
