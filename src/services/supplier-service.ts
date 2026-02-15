@@ -129,16 +129,8 @@ export class SupplierService {
       include: {
         contacts: true,
         pricings: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                sku: true,
-                name: true,
-                unit: true,
-              },
-            },
-          },
+          where: { tenantId },
+          orderBy: { updatedAt: 'desc' },
         },
       },
     })
@@ -351,50 +343,41 @@ export class SupplierService {
       throw new Error('Supplier not found')
     }
 
-    // Verify all products exist and belong to tenant
-    const productIds = pricing.map(p => p.productId)
-    const products = await prisma.product.findMany({
-      where: {
-        tenantId,
-        id: { in: productIds },
-      },
-      select: { id: true },
-    })
-
-    const validProductIds = new Set(products.map(p => p.id))
-    const invalidProducts = productIds.filter(id => !validProductIds.has(id))
-
-    if (invalidProducts.length > 0) {
-      throw new Error(`Invalid product IDs: ${invalidProducts.join(', ')}`)
-    }
-
     // Upsert each pricing row
     const results = await Promise.all(
       pricing.map(async (row) => {
-        return prisma.supplierPricing.upsert({
+        const productType = row.productType || null
+        const existing = await prisma.supplierPricing.findFirst({
           where: {
-            supplierId_productId: {
-              supplierId,
-              productId: row.productId,
-            },
-          },
-          create: {
+            tenantId,
             supplierId,
             productId: row.productId,
-            unitPrice: row.unitPrice,
-            currency: row.currency || 'INR',
-            minQty: row.minQty || null,
-            validFrom: row.validFrom ? new Date(row.validFrom) : null,
-            validTo: row.validTo ? new Date(row.validTo) : null,
-          },
-          update: {
-            unitPrice: row.unitPrice,
-            currency: row.currency || 'INR',
-            minQty: row.minQty || null,
-            validFrom: row.validFrom ? new Date(row.validFrom) : null,
-            validTo: row.validTo ? new Date(row.validTo) : null,
+            productType,
           },
         })
+
+        const data = {
+          tenantId,
+          supplierId,
+          productId: row.productId,
+          productType,
+          unitPrice: row.unitPrice ?? (row.directPurchaseRate || null),
+          jobWorkRate: row.jobWorkRate || null,
+          directPurchaseRate: row.directPurchaseRate || null,
+          currency: row.currency || 'INR',
+          minQty: row.minQty || null,
+          validFrom: row.validFrom ? new Date(row.validFrom) : null,
+          validTo: row.validTo ? new Date(row.validTo) : null,
+        }
+
+        if (existing) {
+          return prisma.supplierPricing.update({
+            where: { id: existing.id },
+            data,
+          })
+        } else {
+          return prisma.supplierPricing.create({ data })
+        }
       })
     )
 
@@ -404,7 +387,7 @@ export class SupplierService {
   // Upload pricing from CSV (by SKU)
   static async uploadPricingFromCsv(
     supplierId: string,
-    rows: { sku: string; unitPrice: number; currency?: string; minQty?: number }[],
+    rows: { sku: string; productType?: string; unitPrice?: number; jobWorkRate?: number; directPurchaseRate?: number; currency?: string; minQty?: number }[],
     tenantId: string
   ) {
     // Verify supplier
@@ -419,48 +402,81 @@ export class SupplierService {
     // Get all SKUs from CSV
     const skus = rows.map(r => r.sku)
 
-    // Find products by SKU
-    const products = await prisma.product.findMany({
-      where: {
-        tenantId,
-        sku: { in: skus },
-      },
-      select: { id: true, sku: true },
-    })
+    // Look up SKUs across all product tables
+    const [products, finishedProducts, fabrics, rawMaterials, packagingItems] = await Promise.all([
+      prisma.product.findMany({
+        where: { tenantId, sku: { in: skus } },
+        select: { id: true, sku: true },
+      }),
+      prisma.finishedProduct.findMany({
+        where: { tenantId, childSku: { in: skus } },
+        select: { id: true, childSku: true },
+      }),
+      prisma.fabric.findMany({
+        where: { tenantId, fabricSku: { in: skus } },
+        select: { id: true, fabricSku: true },
+      }),
+      prisma.rawMaterial.findMany({
+        where: { tenantId, rmSku: { in: skus } },
+        select: { id: true, rmSku: true },
+      }),
+      prisma.packaging.findMany({
+        where: { tenantId, pkgSku: { in: skus } },
+        select: { id: true, pkgSku: true },
+      }),
+    ])
 
-    const skuToProductId = new Map(products.map(p => [p.sku, p.id]))
+    // Build SKU → { productId, productType } map
+    const skuMap = new Map<string, { productId: string; productType: string | null }>()
+    for (const p of products) skuMap.set(p.sku, { productId: p.id, productType: null })
+    for (const p of finishedProducts) skuMap.set(p.childSku, { productId: p.id, productType: 'finished' })
+    for (const p of fabrics) skuMap.set(p.fabricSku, { productId: p.id, productType: 'fabric' })
+    for (const p of rawMaterials) skuMap.set(p.rmSku, { productId: p.id, productType: 'raw_material' })
+    for (const p of packagingItems) skuMap.set(p.pkgSku, { productId: p.id, productType: 'packaging' })
+
     const results: any[] = []
     const errors: string[] = []
 
     for (const row of rows) {
-      const productId = skuToProductId.get(row.sku)
-      if (!productId) {
+      const match = skuMap.get(row.sku)
+      if (!match) {
         errors.push(`SKU "${row.sku}" not found`)
         continue
       }
 
-      const result = await prisma.supplierPricing.upsert({
+      const productType = row.productType || match.productType
+
+      const existing = await prisma.supplierPricing.findFirst({
         where: {
-          supplierId_productId: {
-            supplierId,
-            productId,
-          },
-        },
-        create: {
+          tenantId,
           supplierId,
-          productId,
-          unitPrice: row.unitPrice,
-          currency: row.currency || 'INR',
-          minQty: row.minQty || null,
-        },
-        update: {
-          unitPrice: row.unitPrice,
-          currency: row.currency || 'INR',
-          minQty: row.minQty || null,
+          productId: match.productId,
+          productType,
         },
       })
 
-      results.push(result)
+      const data = {
+        tenantId,
+        supplierId,
+        productId: match.productId,
+        productType,
+        unitPrice: row.unitPrice ?? (row.directPurchaseRate || null),
+        jobWorkRate: row.jobWorkRate || null,
+        directPurchaseRate: row.directPurchaseRate || null,
+        currency: row.currency || 'INR',
+        minQty: row.minQty || null,
+      }
+
+      if (existing) {
+        const result = await prisma.supplierPricing.update({
+          where: { id: existing.id },
+          data,
+        })
+        results.push(result)
+      } else {
+        const result = await prisma.supplierPricing.create({ data })
+        results.push(result)
+      }
     }
 
     return { results, errors }
@@ -478,18 +494,8 @@ export class SupplierService {
     }
 
     return prisma.supplierPricing.findMany({
-      where: { supplierId },
-      include: {
-        product: {
-          select: {
-            id: true,
-            sku: true,
-            name: true,
-            unit: true,
-          },
-        },
-      },
-      orderBy: { product: { sku: 'asc' } },
+      where: { supplierId, tenantId },
+      orderBy: { updatedAt: 'desc' },
     })
   }
 

@@ -29,7 +29,7 @@ export async function getPOsForReconciliation(tenantId: string, params?: {
           select: { id: true, code: true, name: true },
         },
         grns: {
-          select: { id: true, grnNumber: true, receivedAt: true },
+          select: { id: true, grnNumber: true, grnDate: true },
         },
         lineItems: {
           include: {
@@ -97,7 +97,7 @@ export async function getPOForReconciliation(poId: string, tenantId: string) {
       refundItems: true,
       grns: {
         include: {
-          createdBy: { select: { id: true, name: true } },
+          user: { select: { id: true, name: true } },
           lineItems: {
             include: {
               poLineItem: true,
@@ -216,14 +216,16 @@ export async function submitReconciliation(
         purchaseOrderId: poId,
         supplierId: po.supplierId,
         entityId: data.entityId,
-        amount: data.invoiceAmount,
+        amount: data.invoiceAmount + (data.transportCharges || 0),
         invoiceNumber: data.invoiceNumber,
         invoiceDate: new Date(data.invoiceDate),
         invoiceAmount: data.invoiceAmount,
         invoiceAttachment: data.invoiceAttachment,
         paymentDate: new Date(),
         status: PaymentStatus.pending_approval,
-        notes: data.notes,
+        notes: data.transportCharges
+          ? `${data.notes || ''}${data.notes ? '\n' : ''}Transport/Other Charges: ₹${data.transportCharges}`
+          : data.notes,
         createdById: userId,
       },
       include: {

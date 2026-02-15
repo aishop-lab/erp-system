@@ -83,7 +83,9 @@ interface PackagingDetails {
 }
 
 interface SupplierPricing {
-  unitPrice: number
+  unitPrice: number | null
+  jobWorkRate: number | null
+  directPurchaseRate: number | null
   minQty: number | null
   validFrom: string | null
   validTo: string | null
@@ -95,6 +97,7 @@ interface AddLineItemDialogProps {
   purchaseType: PurchaseType
   supplierId?: string
   supplierCode?: string
+  rawMaterialMode?: string
   onAdd: (lineItem: {
     productId: string
     sku: string
@@ -253,6 +256,7 @@ export function AddLineItemDialog({
   purchaseType,
   supplierId,
   supplierCode,
+  rawMaterialMode,
   onAdd,
 }: AddLineItemDialogProps) {
   // Common state
@@ -930,7 +934,14 @@ export function AddLineItemDialog({
     })
 
     if (isFinishedType() && productDetails) {
-      const unitPrice = supplierPricing?.unitPrice ?? productDetails.costPrice
+      let unitPrice = productDetails.costPrice
+      if (rawMaterialMode === 'raw_materials_issued' && supplierPricing?.jobWorkRate) {
+        unitPrice = supplierPricing.jobWorkRate
+      } else if (supplierPricing?.directPurchaseRate) {
+        unitPrice = supplierPricing.directPurchaseRate
+      } else if (supplierPricing?.unitPrice) {
+        unitPrice = supplierPricing.unitPrice
+      }
       const lineItem = {
         productId: productDetails.id,
         sku: productDetails.childSku,
@@ -1005,11 +1016,25 @@ export function AddLineItemDialog({
   // Get current details for display
   // ============================================
 
+  function getFinishedUnitPrice(): number {
+    if (!productDetails) return 0
+    if (rawMaterialMode === 'raw_materials_issued' && supplierPricing?.jobWorkRate) {
+      return supplierPricing.jobWorkRate
+    }
+    if (supplierPricing?.directPurchaseRate) {
+      return supplierPricing.directPurchaseRate
+    }
+    if (supplierPricing?.unitPrice) {
+      return supplierPricing.unitPrice
+    }
+    return productDetails.costPrice
+  }
+
   function getCurrentDetails() {
     if (isFinishedType() && productDetails) {
       return {
         sku: productDetails.childSku,
-        unitPrice: supplierPricing?.unitPrice ?? productDetails.costPrice,
+        unitPrice: getFinishedUnitPrice(),
         gstPct: productDetails.gstPct,
       }
     }
@@ -1274,12 +1299,41 @@ export function AddLineItemDialog({
                   <span className="font-medium">
                     ₹{details.unitPrice.toFixed(2)}
                   </span>
+                  {isFinishedType() && supplierPricing && rawMaterialMode === 'raw_materials_issued' && supplierPricing.jobWorkRate && (
+                    <span className="ml-2 text-xs text-muted-foreground">(Job Work Rate)</span>
+                  )}
+                  {isFinishedType() && supplierPricing && rawMaterialMode !== 'raw_materials_issued' && supplierPricing.directPurchaseRate && (
+                    <span className="ml-2 text-xs text-muted-foreground">(Direct Purchase Rate)</span>
+                  )}
                 </p>
                 <p className="text-sm">
                   <span className="text-muted-foreground">GST:</span>{' '}
                   <span className="font-medium">{details.gstPct}%</span>
                 </p>
               </div>
+
+              {isFinishedType() && supplierPricing && (supplierPricing.directPurchaseRate || supplierPricing.jobWorkRate) && (
+                <div className="space-y-1 border-t pt-2">
+                  {supplierPricing.directPurchaseRate && (
+                    <p className={cn(
+                      'text-xs',
+                      rawMaterialMode !== 'raw_materials_issued' ? 'text-green-600 font-medium' : 'text-muted-foreground'
+                    )}>
+                      Direct Purchase: ₹{supplierPricing.directPurchaseRate.toFixed(2)}
+                      {rawMaterialMode !== 'raw_materials_issued' && ' (active)'}
+                    </p>
+                  )}
+                  {supplierPricing.jobWorkRate && (
+                    <p className={cn(
+                      'text-xs',
+                      rawMaterialMode === 'raw_materials_issued' ? 'text-green-600 font-medium' : 'text-muted-foreground'
+                    )}>
+                      Job Work: ₹{supplierPricing.jobWorkRate.toFixed(2)}
+                      {rawMaterialMode === 'raw_materials_issued' && ' (active)'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {supplierPricing && (
                 <div className="flex items-center text-sm text-green-600">

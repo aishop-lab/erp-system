@@ -55,15 +55,33 @@ export const createSupplierSchema = z.object({
 
 export const updateSupplierSchema = createSupplierSchema.partial()
 
+// Product types for pricing
+export const pricingProductTypes = ['finished', 'fabric', 'raw_material', 'packaging'] as const
+
 // Pricing catalog row schema
 export const pricingRowSchema = z.object({
-  productId: z.string().cuid(),
-  unitPrice: z.number().positive('Unit price must be positive'),
+  productId: z.string().min(1),
+  productType: z.enum(pricingProductTypes).optional(),
+  unitPrice: z.number().positive('Unit price must be positive').optional(),
+  jobWorkRate: z.number().positive('Job work rate must be positive').optional(),
+  directPurchaseRate: z.number().positive('Direct purchase rate must be positive').optional(),
   currency: z.string().default('INR'),
   minQty: z.number().int().positive().optional(),
   validFrom: z.string().datetime().optional(),
   validTo: z.string().datetime().optional(),
-})
+}).refine(
+  (data) => {
+    if (data.productType === 'finished') {
+      return (data.directPurchaseRate !== undefined && data.directPurchaseRate > 0) ||
+             (data.jobWorkRate !== undefined && data.jobWorkRate > 0) ||
+             (data.unitPrice !== undefined && data.unitPrice > 0)
+    }
+    return data.unitPrice !== undefined && data.unitPrice > 0
+  },
+  {
+    message: 'Finished products need at least one rate (directPurchaseRate, jobWorkRate, or unitPrice). Other types require unitPrice.',
+  }
+)
 
 export const uploadPricingSchema = z.object({
   pricing: z.array(pricingRowSchema),
@@ -72,7 +90,10 @@ export const uploadPricingSchema = z.object({
 // CSV pricing row schema (for parsing uploaded CSV)
 export const csvPricingRowSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
-  unitPrice: z.number().positive('Unit price must be positive'),
+  productType: z.enum(pricingProductTypes).optional(),
+  unitPrice: z.number().positive('Unit price must be positive').optional(),
+  jobWorkRate: z.number().positive('Job work rate must be positive').optional(),
+  directPurchaseRate: z.number().positive('Direct purchase rate must be positive').optional(),
   currency: z.string().default('INR'),
   minQty: z.number().int().positive().optional(),
 })

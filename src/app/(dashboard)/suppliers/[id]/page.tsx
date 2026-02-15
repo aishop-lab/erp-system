@@ -51,15 +51,13 @@ interface Contact {
 
 interface Pricing {
   id: string
-  unitPrice: number
+  productId: string | null
+  productType: string | null
+  unitPrice: number | null
+  jobWorkRate: number | null
+  directPurchaseRate: number | null
   currency: string
   minQty: number | null
-  product: {
-    id: string
-    sku: string
-    name: string
-    unit: string
-  }
 }
 
 interface Supplier {
@@ -458,7 +456,7 @@ export default function SupplierDetailPage() {
     setDeleteTarget({
       type: 'pricing',
       id: pricing.id,
-      name: `${pricing.product.sku} - ${pricing.product.name}`,
+      name: `${pricing.productId || 'Unknown'} (${pricing.productType || 'N/A'})`,
     })
     setConfirmOpen(true)
   }
@@ -479,9 +477,12 @@ export default function SupplierDetailPage() {
       const priceIndex = headers.indexOf('unitprice') !== -1 ? headers.indexOf('unitprice') : headers.indexOf('price')
       const currencyIndex = headers.indexOf('currency')
       const minQtyIndex = headers.indexOf('minqty') !== -1 ? headers.indexOf('minqty') : headers.indexOf('min_qty')
+      const productTypeIndex = headers.indexOf('product_type') !== -1 ? headers.indexOf('product_type') : headers.indexOf('producttype')
+      const jobWorkRateIndex = headers.indexOf('job_work_rate') !== -1 ? headers.indexOf('job_work_rate') : headers.indexOf('jobworkrate')
+      const directPurchaseRateIndex = headers.indexOf('direct_purchase_rate') !== -1 ? headers.indexOf('direct_purchase_rate') : headers.indexOf('directpurchaserate')
 
-      if (skuIndex === -1 || priceIndex === -1) {
-        throw new Error('CSV must have "sku" and "unitPrice" (or "price") columns')
+      if (skuIndex === -1) {
+        throw new Error('CSV must have a "sku" column')
       }
 
       const csvPricing = []
@@ -489,12 +490,18 @@ export default function SupplierDetailPage() {
         const values = lines[i].split(',').map(v => v.trim())
         if (!values[skuIndex]) continue
 
-        csvPricing.push({
+        const row: any = {
           sku: values[skuIndex],
-          unitPrice: parseFloat(values[priceIndex]),
           currency: currencyIndex !== -1 ? values[currencyIndex] || 'INR' : 'INR',
-          minQty: minQtyIndex !== -1 && values[minQtyIndex] ? parseInt(values[minQtyIndex]) : undefined,
-        })
+        }
+
+        if (priceIndex !== -1 && values[priceIndex]) row.unitPrice = parseFloat(values[priceIndex])
+        if (minQtyIndex !== -1 && values[minQtyIndex]) row.minQty = parseInt(values[minQtyIndex])
+        if (productTypeIndex !== -1 && values[productTypeIndex]) row.productType = values[productTypeIndex]
+        if (jobWorkRateIndex !== -1 && values[jobWorkRateIndex]) row.jobWorkRate = parseFloat(values[jobWorkRateIndex])
+        if (directPurchaseRateIndex !== -1 && values[directPurchaseRateIndex]) row.directPurchaseRate = parseFloat(values[directPurchaseRateIndex])
+
+        csvPricing.push(row)
       }
 
       const response = await fetch(`/api/suppliers/${id}/pricing`, {
@@ -523,7 +530,7 @@ export default function SupplierDetailPage() {
   }
 
   const downloadCsvTemplate = () => {
-    const template = 'sku,unitPrice,currency,minQty\nSKU001,100.00,INR,1\nSKU002,250.50,INR,5'
+    const template = 'sku,product_type,unitPrice,direct_purchase_rate,job_work_rate,currency,minQty\nSKU001,finished,,450.00,200.00,INR,1\nSKU002,fabric,250.50,,,INR,5\nSKU003,raw_material,100.00,,,INR,10'
     const blob = new Blob([template], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -942,10 +949,11 @@ export default function SupplierDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead>Unit</TableHead>
+                    <TableHead>Product ID</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Direct Purchase</TableHead>
+                    <TableHead className="text-right">Job Work</TableHead>
                     <TableHead className="text-right">Min Qty</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -953,13 +961,22 @@ export default function SupplierDetailPage() {
                 <TableBody>
                   {pricings.map((pricing) => (
                     <TableRow key={pricing.id}>
-                      <TableCell className="font-mono text-sm">
-                        {pricing.product.sku}
+                      <TableCell className="font-mono text-sm max-w-[120px] truncate" title={pricing.productId || ''}>
+                        {pricing.productId ? pricing.productId.slice(0, 8) + '...' : '-'}
                       </TableCell>
-                      <TableCell>{pricing.product.name}</TableCell>
-                      <TableCell>{pricing.product.unit}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {pricing.productType || 'legacy'}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
-                        {pricing.currency} {Number(pricing.unitPrice).toFixed(2)}
+                        {pricing.unitPrice ? `${pricing.currency} ${Number(pricing.unitPrice).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {pricing.directPurchaseRate ? `₹${Number(pricing.directPurchaseRate).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {pricing.jobWorkRate ? `₹${Number(pricing.jobWorkRate).toFixed(2)}` : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         {pricing.minQty || '-'}

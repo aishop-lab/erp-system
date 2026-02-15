@@ -5,7 +5,9 @@ export const submitReconciliationSchema = z.object({
   invoiceNumber: z.string().min(1, 'Invoice number is required').max(100),
   invoiceDate: z.string().datetime('Invalid invoice date'),
   invoiceAmount: z.coerce.number().min(0.01, 'Invoice amount must be positive'),
+  transportCharges: z.coerce.number().min(0).default(0),
   invoiceAttachment: z.string().optional(),
+  grnAttachment: z.string().optional(),
   notes: z.string().max(1000).optional(),
 })
 

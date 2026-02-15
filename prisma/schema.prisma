@@ -41,6 +41,7 @@ model Tenant {
   stockLedger            StockLedger[]
   styles                 Style[]
   suppliers              Supplier[]
+  supplierPricings       SupplierPricing[]
   users                  User[]
 
   @@map("tenants")
@@ -199,6 +200,7 @@ model Supplier {
   purchaseOrders    PurchaseOrder[]
   rawMaterials      RawMaterial[]
   contacts          SupplierContact[]
+  grns              GRN[]
   pricings          SupplierPricing[]
   tenant            Tenant            @relation(fields: [tenantId], references: [id])
 
@@ -222,20 +224,26 @@ model SupplierContact {
 }
 
 model SupplierPricing {
-  id         String    @id @default(cuid())
-  supplierId String
-  productId  String
-  unitPrice  Decimal   @db.Decimal(12, 2)
-  currency   String    @default("INR")
-  minQty     Int?
-  validFrom  DateTime?
-  validTo    DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supplier   Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  id                String    @id @default(cuid())
+  tenantId          String
+  supplierId        String
+  productId         String?
+  productType       String?   // 'finished', 'fabric', 'raw_material', 'packaging'
+  unitPrice         Decimal?  @db.Decimal(15, 2)
+  jobWorkRate       Decimal?  @db.Decimal(15, 2)
+  directPurchaseRate Decimal? @db.Decimal(15, 2)
+  currency          String    @default("INR")
+  minQty            Int?
+  validFrom         DateTime?
+  validTo           DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  supplier          Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
-  @@unique([supplierId, productId])
+  @@unique([tenantId, supplierId, productId, productType])
+  @@index([tenantId, supplierId])
+  @@index([productId, productType])
   @@map("supplier_pricing")
 }
 
@@ -270,14 +278,13 @@ model Product {
   isActive            Boolean              @default(true)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  inventoryBatches    InventoryBatch[]
+  //inventoryBatches    InventoryBatch[]
   outflowItems        OutflowItem[]
   poRmIssuanceItems   PORmIssuanceItem[]
   productionMaterials ProductionMaterial[]
   category            ProductCategory?     @relation(fields: [categoryId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
-  stockLedger         StockLedger[]
-  supplierPricings    SupplierPricing[]
+  //stockLedger         StockLedger[]
 
   @@unique([tenantId, sku])
   @@index([tenantId])
@@ -418,23 +425,43 @@ model PORmIssuanceItem {
 }
 
 model GRN {
-  id              String        @id @default(cuid())
-  tenantId        String
-  grnNumber       String
-  purchaseOrderId String
-  receivedAt      DateTime      @default(now())
-  notes           String?
-  createdById     String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  lineItems       GRNLineItem[]
-  createdBy       User          @relation("GRNCreatedBy", fields: [createdById], references: [id])
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, grnNumber])
-  @@index([tenantId])
+  id                String         @id @default(cuid())
+  tenantId          String
+  grnNumber         String         @unique
+  
+  // PO Reference
+  purchaseOrderId   String
+  purchaseOrder     PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id])
+  poNumber          String
+  
+  // Supplier Reference
+  supplierId        String?
+  supplier          Supplier?       @relation(fields: [supplierId], references: [id])
+  
+  // GRN Details
+  grnDate           DateTime
+  receivedBy        String
+  deliveryChallan   String?
+  vehicleNumber     String?
+  notes             String?
+  status            String         @default("completed")
+  
+  // Audit
+  createdBy         String
+  createdById       String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  // Relations
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  user              User           @relation("GRNCreatedBy", fields: [createdById], references: [id])
+  lineItems         GRNLineItem[]
+  inventoryBatches  InventoryBatch[]
+  
   @@map("grns")
+  @@index([tenantId])
+  @@index([purchaseOrderId])
+  @@index([supplierId])
 }
 
 model GRNLineItem {
@@ -457,45 +484,79 @@ model GRNLineItem {
 }
 
 model InventoryBatch {
-  id              String             @id @default(cuid())
+  id              String   @id @default(cuid())
   tenantId        String
-  productId       String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  
+  // Polymorphic product reference (no strict FK)
+  productId       String?
+  productType     String?  // 'finished', 'fabric', 'raw_material', 'packaging'
+  sku             String?
+  
   batchNumber     String
-  quantity        Int                @default(0)
-  costPrice       Decimal            @db.Decimal(12, 2)
-  expiryDate      DateTime?
-  locationId      String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  product         Product            @relation(fields: [productId], references: [id])
-  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  
+  // Source tracking
+  grnId           String?
+  grn             GRN?      @relation(fields: [grnId], references: [id])
+  productionId    String?
+  adjustmentId    String?
+  
+  // Quantities
+  initialQty      Decimal   @db.Decimal(15,3)
+  currentQty      Decimal   @db.Decimal(15,3)
+  
+  status          String    @default("active")
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  stockLedger     StockLedger[]
   outflowItems    OutflowItem[]
   rmIssuanceItems PORmIssuanceItem[]
-  stockLedger     StockLedger[]
-
-  @@unique([tenantId, productId, batchNumber])
-  @@index([tenantId, productId])
+  
   @@map("inventory_batches")
+  @@index([tenantId, sku])
+  @@index([productId])
+  @@index([grnId])
 }
 
 model StockLedger {
-  id             String          @id @default(cuid())
-  tenantId       String
-  productId      String
-  batchId        String?
-  movementType   MovementType
-  quantity       Int
-  referenceId    String?
-  referenceType  String?
-  notes          String?
-  createdAt      DateTime        @default(now())
-  inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
-  product        Product         @relation(fields: [productId], references: [id])
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId, productId])
-  @@index([tenantId, movementType])
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  
+  // Polymorphic product reference (no strict FK)
+  productId       String?
+  productType     String?
+  sku             String?
+  
+  // Batch reference
+  batchId         String?
+  batch           InventoryBatch? @relation(fields: [batchId], references: [id])
+  batchNumber     String?
+  
+  // Movement details
+  movementType    String   // 'grn', 'sale', 'production_in', 'production_out', 'adjustment'
+  referenceType   String   // 'grn', 'sale_order', 'production', 'adjustment'
+  referenceId     String
+  referenceNumber String?
+  
+  // Quantities
+  qtyIn           Decimal   @db.Decimal(15,3)
+  qtyOut          Decimal   @db.Decimal(15,3)
+  batchBalance    Decimal   @db.Decimal(15,3)
+  skuBalance      Decimal   @db.Decimal(15,3)
+  
+  notes           String?   @db.Text
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  
   @@map("stock_ledger")
+  @@index([tenantId, sku])
+  @@index([productId])
+  @@index([batchId])
+  @@index([referenceType, referenceId])
 }
 
 model InventoryOutflow {

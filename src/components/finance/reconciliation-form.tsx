@@ -31,6 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
+import { Upload, X } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ReconciliationFormProps {
@@ -47,11 +48,14 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [entities, setEntities] = useState<Entity[]>([])
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
+  const [grnFile, setGrnFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     entityId: '',
     invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     invoiceAmount: Number(purchaseOrder.grandTotal) || 0,
+    transportCharges: 0,
     notes: '',
   })
 
@@ -71,6 +75,7 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
   const poTotal = purchaseOrder.grandTotal
   const grnTotal = purchaseOrder.grnTotal
   const invoiceAmount = form.invoiceAmount
+  const amountPayable = invoiceAmount + form.transportCharges
   const poVsGrn = Math.round((poTotal - grnTotal) * 100) / 100
   const poVsInvoice = Math.round((poTotal - invoiceAmount) * 100) / 100
 
@@ -94,6 +99,9 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
           invoiceNumber: form.invoiceNumber,
           invoiceDate: new Date(form.invoiceDate).toISOString(),
           invoiceAmount: form.invoiceAmount,
+          transportCharges: form.transportCharges,
+          invoiceAttachment: invoiceFile?.name,
+          grnAttachment: grnFile?.name,
           notes: form.notes || undefined,
         }),
       })
@@ -120,17 +128,39 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
       {/* PO Summary */}
       <Card>
         <CardHeader>
-          <CardTitle>Purchase Order Summary</CardTitle>
+          <CardTitle>Purchase Order Details</CardTitle>
           <CardDescription>{purchaseOrder.poNumber}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-muted-foreground text-xs">Supplier</Label>
+              <Label className="text-muted-foreground text-xs">PO Number</Label>
+              <p className="font-medium font-mono">{purchaseOrder.poNumber}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground text-xs">Vendor Name</Label>
               <p className="font-medium">{purchaseOrder.supplier?.name || '-'}</p>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs">PO Amount</Label>
+              <Label className="text-muted-foreground text-xs">Vendor ID</Label>
+              <p className="font-medium">{purchaseOrder.supplier?.code || '-'}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground text-xs">Purchase Type</Label>
+              <p className="font-medium capitalize">{purchaseOrder.purchaseType?.replace(/_/g, ' ')}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground text-xs">PO Date</Label>
+              <p className="font-medium">{format(new Date(purchaseOrder.createdAt), 'dd/MM/yyyy')}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground text-xs">Expected Delivery</Label>
+              <p className="font-medium">
+                {purchaseOrder.expectedDelivery ? format(new Date(purchaseOrder.expectedDelivery), 'dd/MM/yyyy') : '-'}
+              </p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground text-xs">PO Value</Label>
               <p className="font-medium">
                 {Number(poTotal).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
               </p>
@@ -138,10 +168,6 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
             <div>
               <Label className="text-muted-foreground text-xs">GRNs</Label>
               <p className="font-medium">{purchaseOrder.grns?.length || 0}</p>
-            </div>
-            <div>
-              <Label className="text-muted-foreground text-xs">Status</Label>
-              <Badge variant="success">Goods Received</Badge>
             </div>
           </div>
         </CardContent>
@@ -187,70 +213,7 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
         </CardContent>
       </Card>
 
-      {/* Line Items */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Line Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead className="text-right">Ordered</TableHead>
-                <TableHead className="text-right">Received</TableHead>
-                <TableHead className="text-right">Accepted</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {purchaseOrder.lineItems?.map((item: any) => (
-                <TableRow key={item.id}>
-                  <TableCell>{item.product?.name || item.product?.sku || '-'}</TableCell>
-                  <TableCell className="text-right">{item.quantity}</TableCell>
-                  <TableCell className="text-right">{item.totalReceived || 0}</TableCell>
-                  <TableCell className="text-right">{item.totalAccepted || 0}</TableCell>
-                  <TableCell className="text-right">
-                    {Number(item.unitPrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {Number(item.totalAmount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* GRN History */}
-      {purchaseOrder.grns?.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>GRN History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {purchaseOrder.grns.map((grn: any) => (
-                <div key={grn.id} className="flex justify-between items-center p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">{grn.grnNumber}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {format(new Date(grn.receivedAt), 'dd MMM yyyy')} - {grn.lineItems?.length || 0} items
-                    </p>
-                  </div>
-                  <Badge variant="secondary">
-                    {grn.createdBy?.name}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Reconciliation Form */}
+      {/* Reconciliation Details */}
       <Card>
         <CardHeader>
           <CardTitle>Reconciliation Details</CardTitle>
@@ -258,6 +221,17 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="invoiceAmount">Invoice Value *</Label>
+              <Input
+                id="invoiceAmount"
+                type="number"
+                step="0.01"
+                value={form.invoiceAmount}
+                onChange={(e) => setForm(f => ({ ...f, invoiceAmount: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="entityId">Entity *</Label>
               <Select
@@ -296,61 +270,209 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
                 onChange={(e) => setForm(f => ({ ...f, invoiceDate: e.target.value }))}
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="invoiceAmount">Invoice Amount *</Label>
-              <Input
-                id="invoiceAmount"
-                type="number"
-                step="0.01"
-                value={form.invoiceAmount}
-                onChange={(e) => setForm(f => ({ ...f, invoiceAmount: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={form.notes}
-              onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Any reconciliation notes..."
-              rows={3}
-            />
-          </div>
-
-          {/* Supplier Bank Details */}
-          {purchaseOrder.supplier && (purchaseOrder.supplier.bankName || purchaseOrder.supplier.bankAccountNumber) && (
-            <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="text-sm font-medium mb-2">Supplier Bank Details</p>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Bank</p>
-                  <p>{purchaseOrder.supplier.bankName || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Account</p>
-                  <p>{purchaseOrder.supplier.bankAccountNumber || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">IFSC</p>
-                  <p>{purchaseOrder.supplier.bankIfscCode || '-'}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => router.back()}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? <LoadingSpinner /> : 'Submit Reconciliation'}
-            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Line Items */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Line Items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Line Item Description</TableHead>
+                <TableHead className="text-right">Cost/Unit</TableHead>
+                <TableHead className="text-right">GST Rate %</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Qty Received</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {purchaseOrder.lineItems?.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell>{item.sku || item.description || '-'}</TableCell>
+                  <TableCell className="text-right">
+                    {Number(item.unitPrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                  </TableCell>
+                  <TableCell className="text-right">{Number(item.taxRate)}%</TableCell>
+                  <TableCell className="text-right">{item.quantity}</TableCell>
+                  <TableCell className="text-right font-medium">{item.totalReceived || 0}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Notes */}
+      <div className="space-y-2">
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea
+          id="notes"
+          value={form.notes}
+          onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+          placeholder="Any reconciliation notes..."
+          rows={3}
+        />
+      </div>
+
+      {/* Transport / Other Charges */}
+      <div className="space-y-2">
+        <Label htmlFor="transportCharges">Other/Transport Charges</Label>
+        <Input
+          id="transportCharges"
+          type="number"
+          step="0.01"
+          value={form.transportCharges}
+          onChange={(e) => setForm(f => ({ ...f, transportCharges: parseFloat(e.target.value) || 0 }))}
+          placeholder="0"
+        />
+        <p className="text-xs text-muted-foreground">
+          Additional charges like transportation, handling, packaging, etc.
+        </p>
+      </div>
+
+      {/* Amount Payable */}
+      <div className="p-4 bg-muted rounded-lg">
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-medium">Amount Payable</span>
+          <span className="text-2xl font-bold">
+            {amountPayable.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+          </span>
+        </div>
+        {form.transportCharges > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Invoice: {invoiceAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} + Transport: {form.transportCharges.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+          </p>
+        )}
+      </div>
+
+      {/* File Uploads */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <Label>Attach Invoice</Label>
+          <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted transition-colors">
+            <Upload className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              {invoiceFile ? invoiceFile.name : 'Upload Invoice'}
+            </span>
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf"
+              onChange={(e) => {
+                if (e.target.files?.[0]) setInvoiceFile(e.target.files[0])
+              }}
+            />
+          </label>
+          {invoiceFile && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">{invoiceFile.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => setInvoiceFile(null)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Attach Signed GRN</Label>
+          <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted transition-colors">
+            <Upload className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              {grnFile ? grnFile.name : 'Upload Signed GRN'}
+            </span>
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf"
+              onChange={(e) => {
+                if (e.target.files?.[0]) setGrnFile(e.target.files[0])
+              }}
+            />
+          </label>
+          {grnFile && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">{grnFile.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => setGrnFile(null)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Supplier Bank Details */}
+      {purchaseOrder.supplier && (purchaseOrder.supplier.bankName || purchaseOrder.supplier.bankAccountNumber) && (
+        <div className="p-4 border rounded-lg bg-muted/30">
+          <p className="text-sm font-medium mb-2">Supplier Bank Details</p>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Bank</p>
+              <p>{purchaseOrder.supplier.bankName || '-'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Account</p>
+              <p>{purchaseOrder.supplier.bankAccountNumber || '-'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">IFSC</p>
+              <p>{purchaseOrder.supplier.bankIfscCode || '-'}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GRN History */}
+      {purchaseOrder.grns?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>GRN History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {purchaseOrder.grns.map((grn: any) => (
+                <div key={grn.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{grn.grnNumber}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(grn.grnDate), 'dd MMM yyyy')} - {grn.lineItems?.length || 0} items
+                    </p>
+                  </div>
+                  <Badge variant="secondary">
+                    {grn.user?.name || '-'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Actions */}
+      <div className="flex justify-end gap-3">
+        <Button variant="outline" onClick={() => router.back()}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || !form.entityId || !form.invoiceNumber}>
+          {submitting ? <LoadingSpinner /> : 'Submit for Payment'}
+        </Button>
+      </div>
     </div>
   )
 }

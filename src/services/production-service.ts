@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { ProductionStatus, ProductionType, MovementType } from '@prisma/client'
+import { ProductionStatus, ProductionType } from '@prisma/client'
 import type { CreateProductionInput, RMIssuanceInput } from '@/validators/production'
 
 export async function getProductions(tenantId: string, params?: {
@@ -110,7 +110,8 @@ export async function createProduction(tenantId: string, userId: string, data: C
 export async function updateProductionStatus(
   id: string,
   tenantId: string,
-  status: ProductionStatus
+  status: ProductionStatus,
+  userId?: string
 ) {
   const production = await prisma.production.findFirst({
     where: { id, tenantId },
@@ -124,17 +125,34 @@ export async function updateProductionStatus(
   return prisma.$transaction(async (tx) => {
     // If completing production, update stock ledger
     if (status === ProductionStatus.completed && production.status !== ProductionStatus.completed) {
+      const createdBy = userId || production.createdById
+
       // Record materials consumed
       for (const material of production.materials) {
+        // Get current batch balance for ledger entry
+        let batchBalance = 0
+        if (material.batchId) {
+          const batch = await tx.inventoryBatch.findUnique({
+            where: { id: material.batchId },
+          })
+          batchBalance = batch ? Number(batch.currentQty) - material.quantity : 0
+        }
+
         await tx.stockLedger.create({
           data: {
             tenantId,
             productId: material.productId,
             batchId: material.batchId,
-            movementType: MovementType.production_out,
-            quantity: -material.quantity,
-            referenceId: production.id,
+            movementType: 'production_out',
             referenceType: 'production',
+            referenceId: production.id,
+            referenceNumber: production.productionNumber,
+            qtyIn: 0,
+            qtyOut: material.quantity,
+            batchBalance: Math.max(batchBalance, 0),
+            skuBalance: 0,
+            notes: `Production ${production.productionNumber} - consumed ${material.quantity} units`,
+            createdBy,
           },
         })
 
@@ -143,7 +161,7 @@ export async function updateProductionStatus(
           await tx.inventoryBatch.update({
             where: { id: material.batchId },
             data: {
-              quantity: { decrement: material.quantity },
+              currentQty: { decrement: material.quantity },
             },
           })
         }
@@ -155,10 +173,16 @@ export async function updateProductionStatus(
           data: {
             tenantId,
             productId: production.outputProductId,
-            movementType: MovementType.production_in,
-            quantity: production.outputQuantity,
-            referenceId: production.id,
+            movementType: 'production_in',
             referenceType: 'production',
+            referenceId: production.id,
+            referenceNumber: production.productionNumber,
+            qtyIn: production.outputQuantity,
+            qtyOut: 0,
+            batchBalance: production.outputQuantity,
+            skuBalance: production.outputQuantity,
+            notes: `Production ${production.productionNumber} - produced ${production.outputQuantity} units`,
+            createdBy,
           },
         })
       }
@@ -171,7 +195,7 @@ export async function updateProductionStatus(
   })
 }
 
-export async function issueRawMaterials(tenantId: string, data: RMIssuanceInput) {
+export async function issueRawMaterials(tenantId: string, userId: string, data: RMIssuanceInput) {
   const po = await prisma.purchaseOrder.findFirst({
     where: {
       id: data.purchaseOrderId,
@@ -211,15 +235,29 @@ export async function issueRawMaterials(tenantId: string, data: RMIssuanceInput)
 
     // Create stock ledger entries and update batches
     for (const item of data.items) {
+      let batchBalance = 0
+      if (item.batchId) {
+        const batch = await tx.inventoryBatch.findUnique({
+          where: { id: item.batchId },
+        })
+        batchBalance = batch ? Number(batch.currentQty) - item.quantity : 0
+      }
+
       await tx.stockLedger.create({
         data: {
           tenantId,
           productId: item.productId,
           batchId: item.batchId,
-          movementType: MovementType.rm_issued_to_vendor,
-          quantity: -item.quantity,
-          referenceId: issuance.id,
+          movementType: 'rm_issued_to_vendor',
           referenceType: 'rm_issuance',
+          referenceId: issuance.id,
+          referenceNumber: issuanceNumber,
+          qtyIn: 0,
+          qtyOut: item.quantity,
+          batchBalance: Math.max(batchBalance, 0),
+          skuBalance: 0,
+          notes: `RM Issuance ${issuanceNumber} - issued ${item.quantity} units`,
+          createdBy: userId,
         },
       })
 
@@ -227,7 +265,7 @@ export async function issueRawMaterials(tenantId: string, data: RMIssuanceInput)
         await tx.inventoryBatch.update({
           where: { id: item.batchId },
           data: {
-            quantity: { decrement: item.quantity },
+            currentQty: { decrement: item.quantity },
           },
         })
       }

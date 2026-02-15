@@ -76,12 +76,15 @@ export async function GET(request: NextRequest) {
         where: {
           supplierId: supplierId,
           productId: product.id,
+          productType: 'finished',
         },
       })
 
       if (pricing) {
         supplierPricing = {
-          unitPrice: Number(pricing.unitPrice),
+          unitPrice: pricing.unitPrice ? Number(pricing.unitPrice) : null,
+          jobWorkRate: pricing.jobWorkRate ? Number(pricing.jobWorkRate) : null,
+          directPurchaseRate: pricing.directPurchaseRate ? Number(pricing.directPurchaseRate) : null,
           minQty: pricing.minQty,
           validFrom: pricing.validFrom,
           validTo: pricing.validTo,

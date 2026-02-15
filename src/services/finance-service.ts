@@ -75,7 +75,7 @@ export async function getPaymentById(id: string, tenantId: string) {
           entity: true,
           lineItems: true,
           grns: {
-            select: { id: true, grnNumber: true, receivedAt: true },
+            select: { id: true, grnNumber: true, grnDate: true },
           },
         },
       },

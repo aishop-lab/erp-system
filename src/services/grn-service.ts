@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { POStatus, MovementType, GoodsCondition } from '@prisma/client'
+import { POStatus, GoodsCondition } from '@prisma/client'
 import type { CreateGRNInput } from '@/validators/grn'
 
 export async function generateGRNNumber(tenantId: string) {
@@ -215,7 +215,15 @@ export async function createGRN(
         tenantId,
         grnNumber,
         purchaseOrderId,
+        poNumber: po.poNumber,
+        supplierId: po.supplierId || undefined,
+        grnDate: new Date(),
+        receivedBy: 'System',
+        deliveryChallan: null,
+        vehicleNumber: null,
+        status: 'completed',
         notes,
+        createdBy: userId,
         createdById: userId,
         lineItems: {
           create: lineItems.map(item => ({
@@ -236,6 +244,16 @@ export async function createGRN(
     })
 
     // 2. Create inventory batches and stock ledger entries for accepted items
+    const createdBatches: Array<{
+      id: string
+      sku: string | null
+      productType: string | null
+      productId: string | null
+      batchNumber: string
+      initialQty: number
+      createdAt: Date
+    }> = []
+
     for (const item of lineItems) {
       if (item.acceptedQty <= 0) continue
 
@@ -244,28 +262,57 @@ export async function createGRN(
 
       const batchNumber = item.batchNumber || grnNumber
 
-      // Upsert inventory batch
-      const batch = await tx.inventoryBatch.upsert({
-        where: {
-          tenantId_productId_batchNumber: {
-            tenantId,
-            productId: poLine.productId,
-            batchNumber,
-          },
-        },
-        update: {
-          quantity: {
-            increment: item.acceptedQty,
-          },
-        },
-        create: {
+      // Fetch SKU based on product type
+      let sku: string | null = null
+      if (poLine.productType === 'fabric') {
+        const fabric = await tx.fabric.findUnique({
+          where: { id: poLine.productId },
+          select: { fabricSku: true }
+        })
+        sku = fabric?.fabricSku || null
+      } else if (poLine.productType === 'raw_material') {
+        const rawMaterial = await tx.rawMaterial.findUnique({
+          where: { id: poLine.productId },
+          select: { rmSku: true }
+        })
+        sku = rawMaterial?.rmSku || null
+      } else if (poLine.productType === 'packaging') {
+        const packaging = await tx.packaging.findUnique({
+          where: { id: poLine.productId },
+          select: { pkgSku: true }
+        })
+        sku = packaging?.pkgSku || null
+      } else if (poLine.productType === 'finished') {
+        const finished = await tx.finishedProduct.findUnique({
+          where: { id: poLine.productId },
+          select: { childSku: true }
+        })
+        sku = finished?.childSku || null
+      }
+
+      // Create inventory batch
+      const batch = await tx.inventoryBatch.create({
+        data: {
           tenantId,
           productId: poLine.productId,
+          productType: poLine.productType,
+          sku,
           batchNumber,
-          quantity: item.acceptedQty,
-          costPrice: poLine.unitPrice,
-          expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
+          grnId: grn.id,
+          initialQty: item.acceptedQty,
+          currentQty: item.acceptedQty,
+          status: 'active',
         },
+      })
+
+      createdBatches.push({
+        id: batch.id,
+        sku,
+        productType: poLine.productType,
+        productId: poLine.productId,
+        batchNumber,
+        initialQty: item.acceptedQty,
+        createdAt: batch.createdAt,
       })
 
       // Stock ledger entry
@@ -273,12 +320,20 @@ export async function createGRN(
         data: {
           tenantId,
           productId: poLine.productId,
+          productType: poLine.productType,
+          sku,
           batchId: batch.id,
-          movementType: MovementType.grn,
-          quantity: item.acceptedQty,
-          referenceId: grn.id,
+          batchNumber,
+          movementType: 'grn',
           referenceType: 'grn',
+          referenceId: grn.id,
+          referenceNumber: grnNumber,
+          qtyIn: item.acceptedQty,
+          qtyOut: 0,
+          batchBalance: item.acceptedQty,
+          skuBalance: item.acceptedQty,
           notes: `GRN ${grnNumber} - Accepted ${item.acceptedQty} units`,
+          createdBy: userId,
         },
       })
     }
@@ -318,11 +373,50 @@ export async function createGRN(
       })
     }
 
-    return grn
+    return { grn, createdBatches }
   })
 
-  // Return full GRN with relations
-  return getGRNById(result.id, tenantId)
+  // Enrich batches with product details for barcode printing
+  const batchesWithDetails = await Promise.all(
+    result.createdBatches.map(async (batch) => {
+      let productDetails: Record<string, unknown> | null = null
+
+      if (batch.productId) {
+        switch (batch.productType) {
+          case 'fabric':
+            productDetails = await prisma.fabric.findUnique({
+              where: { id: batch.productId },
+              select: { material: true, color: true, design: true, work: true },
+            })
+            break
+          case 'raw_material':
+            productDetails = await prisma.rawMaterial.findUnique({
+              where: { id: batch.productId },
+              select: { rmType: true, color: true },
+            })
+            break
+          case 'packaging':
+            productDetails = await prisma.packaging.findUnique({
+              where: { id: batch.productId },
+              select: { pkgType: true, dimensions: true },
+            })
+            break
+          case 'finished':
+            productDetails = await prisma.finishedProduct.findUnique({
+              where: { id: batch.productId },
+              select: { title: true, size: true, color: true, mrp: true },
+            })
+            break
+        }
+      }
+
+      return { ...batch, productDetails }
+    })
+  )
+
+  // Return full GRN with relations + batch details for barcode labels
+  const grnData = await getGRNById(result.grn.id, tenantId)
+  return { ...grnData, inventoryBatches: batchesWithDetails }
 }
 
 export async function getGRNs(tenantId: string, params?: {
@@ -356,7 +450,7 @@ export async function getGRNs(tenantId: string, params?: {
             },
           },
         },
-        createdBy: {
+        user: {
           select: { id: true, name: true },
         },
         _count: {
@@ -370,8 +464,14 @@ export async function getGRNs(tenantId: string, params?: {
     prisma.gRN.count({ where }),
   ])
 
+  // Map user → createdBy for API consistency
+  const data = grns.map(grn => ({
+    ...grn,
+    createdByUser: grn.user,
+  }))
+
   return {
-    data: grns,
+    data,
     total,
     page,
     pageSize,
@@ -380,7 +480,7 @@ export async function getGRNs(tenantId: string, params?: {
 }
 
 export async function getGRNById(id: string, tenantId: string) {
-  return prisma.gRN.findFirst({
+  const grn = await prisma.gRN.findFirst({
     where: { id, tenantId },
     include: {
       purchaseOrder: {
@@ -390,7 +490,7 @@ export async function getGRNById(id: string, tenantId: string) {
           },
         },
       },
-      createdBy: {
+      user: {
         select: { id: true, name: true },
       },
       lineItems: {
@@ -400,4 +500,12 @@ export async function getGRNById(id: string, tenantId: string) {
       },
     },
   })
+
+  if (!grn) return null
+
+  // Map user → createdByUser for API consistency
+  return {
+    ...grn,
+    createdByUser: grn.user,
+  }
 }

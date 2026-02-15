@@ -47,11 +47,6 @@ export async function getProductById(id: string, tenantId: string) {
     where: { id, tenantId },
     include: {
       category: true,
-      supplierPricings: {
-        include: {
-          supplier: true,
-        },
-      },
     },
   })
 }

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table'
 import { ProductSearch } from './product-search'
 import { AddLineItemDialog } from './add-line-item-dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { PurchaseType, EntryMode, RawMaterialMode } from '@/types/enums'
 import { PURCHASE_TYPE_LABELS } from '@/lib/constants'
 
@@ -317,28 +318,28 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
         expectedDelivery: expectedDelivery ? new Date(expectedDelivery).toISOString() : null,
         lineItems: entryMode === EntryMode.CATALOG || entryMode === EntryMode.LINK_FINISHED
           ? lineItems.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              taxRate: item.taxRate,
-            }))
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            taxRate: item.taxRate,
+          }))
           : undefined,
         freeTextItems: entryMode === EntryMode.FREE_TEXT
           ? freeTextItems.map((item) => ({
-              description: item.description,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              taxRate: item.taxRate,
-            }))
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            taxRate: item.taxRate,
+          }))
           : undefined,
         refundItems: entryMode === EntryMode.SPECIAL
           ? refundItems.map((item) => ({
-              customerName: item.customerName,
-              orderNumber: item.orderNumber,
-              reason: item.reason,
-              amount: item.amount,
-              refundMode: item.refundMode,
-            }))
+            customerName: item.customerName,
+            orderNumber: item.orderNumber,
+            reason: item.reason,
+            amount: item.amount,
+            refundMode: item.refundMode,
+          }))
           : undefined,
       }
 
@@ -458,11 +459,10 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
             {/* Expected Delivery */}
             <div className="space-y-2">
               <Label htmlFor="expectedDelivery">Expected Delivery</Label>
-              <Input
-                id="expectedDelivery"
-                type="date"
+              <DatePicker
                 value={expectedDelivery}
-                onChange={(e) => setExpectedDelivery(e.target.value)}
+                onChange={setExpectedDelivery}
+                placeholder="Select delivery date"
               />
             </div>
           </div>
@@ -493,16 +493,16 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
               purchaseType === PurchaseType.PACKAGING ||
               purchaseType === PurchaseType.SAMPLES ||
               purchaseType === PurchaseType.INFLUENCER_SAMPLES) && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setAddLineItemDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Product
-              </Button>
-            )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddLineItemDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Product
+                </Button>
+              )}
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Product Search - for corporate assets type (uses finished products) */}
@@ -879,6 +879,7 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
         purchaseType={purchaseType}
         supplierId={supplierId}
         supplierCode={selectedSupplier?.code}
+        rawMaterialMode={rawMaterialMode}
         onAdd={handleDialogAddLineItem}
       />
     </form>

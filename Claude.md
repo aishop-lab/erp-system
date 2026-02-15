@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-11 (Finance Module - Reconciliation + Payments + Admin Approvals)
+> **Last Updated:** 2026-02-14 (External Vendors - Shivaang dashboard)
 
 ## Overview
 
@@ -18,33 +18,44 @@ src/
 │   ├── (auth)/login/
 │   ├── (dashboard)/
 │   │   ├── admin/users/, admin/settings/
+│   │   ├── admin/approvals/{po,payments}/
 │   │   ├── suppliers/
 │   │   ├── products/{styles,fabrics,raw-materials,packaging,finished}/
 │   │   ├── purchase-orders/, purchase-orders/new, [id]/, [id]/edit/
-│   │   ├── inventory/, production/, finance/
+│   │   ├── inventory/, inventory/grn/, inventory/ledger/
+│   │   ├── production/
+│   │   ├── finance/, finance/reconciliation/, finance/payments/
+│   │   ├── finance/{fulton,mse,sna}/        # Entity-specific payment pages
 │   │   └── profile/
 │   └── api/
 │       ├── users/, me/, profile/
 │       ├── suppliers/[id]/{contacts,pricing}/
 │       ├── admin/settings/{sales-channels,entities,payment-modes}/
+│       ├── admin/approvals/po/[id]/approve/
 │       ├── product-info/{styles,fabrics,raw-materials,packaging,finished}/
 │       │   ├── finished/[id]/media/[mediaId]/
 │       │   ├── finished/{categories,styles-by-category,colors,sizes,lookup}/
 │       │   └── search/                # Cross-library product search
-│       └── purchase-orders/
-│           └── [id]/{submit,approve}/
+│       ├── purchase-orders/[id]/{submit,approve}/
+│       ├── inventory/{grn,stock-overview,stock-ledger}/
+│       └── finance/
+│           ├── reconciliation/[poId]/, [poId]/submit/
+│           └── payments/[id]/, [id]/{approve,execute}/
 ├── components/
 │   ├── ui/                    # shadcn components
-│   ├── shared/                # page-header, loading-spinner, vendor-selector
+│   ├── shared/                # page-header, loading-spinner, vendor-selector, empty-state
 │   ├── products/media-upload.tsx
 │   ├── purchase-orders/       # po-form, po-list, po-detail, product-search, add-line-item-dialog
+│   ├── finance/               # reconciliation-list, reconciliation-form, payment-list,
+│   │                          # payment-detail, payment-execution-form, entity-payment-list
 │   └── layout/sidebar.tsx, header.tsx
 ├── lib/
 │   ├── prisma.ts, utils.ts, constants.ts
 │   ├── media-upload.ts       # Supabase Storage upload utility
 │   └── supabase/{client,server}.ts
-├── services/                  # Business logic (supplier, user, settings, product-info)
-├── validators/                # Zod schemas
+├── services/                  # Business logic (supplier, user, settings, product-info,
+│                              # grn, inventory, reconciliation, finance, production)
+├── validators/                # Zod schemas (supplier, purchase-order, reconciliation, payment)
 └── hooks/
 
 scripts/migrations/            # Data migration scripts (excluded from build)
@@ -63,7 +74,7 @@ data/                          # CSV files for migration
 ### Suppliers
 - **Supplier** - With auto-generated code (SUP001), supplyCategories[], contacts, pricing
 - **SupplierContact** - With isPrimary flag
-- **SupplierPricing** - Product-supplier price mapping
+- **SupplierPricing** - Polymorphic (productId + productType, no FK); tenantId, unitPrice?, jobWorkRate?, directPurchaseRate?; unique on [tenantId, supplierId, productId, productType]
 
 ### Product Information (5 Libraries)
 - **Style** - Garment templates with 50+ measurement fields (chest32-50, length32-50, etc.)
@@ -84,8 +95,22 @@ data/                          # CSV files for migration
 - **POLineItemFreetext** - Free-text items for services
 - **POLineItemRefund** - Customer refund entries
 
+### Inventory & GRN
+- **GRN** - Goods receipt with poNumber, supplierId, grnDate, receivedBy, deliveryChallan, vehicleNumber, status; User relation via `user` field (not `createdBy` which is a plain String)
+- **GRNLineItem** - receivedQty, acceptedQty, rejectedQty, condition, batchNumber
+- **InventoryBatch** - Polymorphic (productId + productType + sku, no FK); fields: initialQty, currentQty, status, grnId
+- **StockLedger** - Polymorphic (productId + productType + sku, no FK); movementType is String (not enum); fields: qtyIn, qtyOut, batchBalance, skuBalance, createdBy (String), referenceNumber
+
+### Production
+- **Production** - productionNumber, productionType (enum), status (enum), outputProductId, outputQuantity
+- **ProductionMaterial** - productId (FK to Product), quantity, batchId
+
+### Finance
+- **Payment** - Full lifecycle: status enum (pending, pending_approval, approved, executed, rejected, paid, cod); invoice fields (invoiceNumber, invoiceDate, invoiceAmount, invoiceAttachment); execution fields (amountPaid, tdsDeducted, netAmountPaid, paymentProof, transactionReference); audit (createdById, approvedById, executedById with User relations); linked to PO, Supplier, Entity, PaymentMode, ExternalVendor
+- **MarketplaceSettlement** - salesChannelId, grossAmount, fees, netAmount
+- **ApprovalAuditLog** - approvalType (po_approval, payment_approval), action, userId, reason, referenceId
+
 ### Future (Schema Ready)
-- GRN, InventoryBatch, StockLedger
 - ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
 
 ---
@@ -119,9 +144,11 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | RawMaterial Lookup | GET `/api/product-info/raw-materials/{types,colors,lookup}` |
 | Packaging Lookup | GET `/api/product-info/packaging/{types,channels,dimensions,lookup}` |
 | Purchase Orders | CRUD `/api/purchase-orders/[id]`, POST `[id]/submit`, `[id]/approve` |
-| Admin Approvals | GET `/api/admin/approvals/po`, POST `/api/admin/approvals/po/[id]/approve` |
-| Reconciliation | GET `/api/finance/reconciliation`, GET/POST `[poId]`, POST `[poId]/submit` |
-| Payments | GET `/api/finance/payments`, GET `[id]`, POST `[id]/approve`, POST `[id]/execute` |
+| Admin PO Approvals | GET `/api/admin/approvals/po`, POST `/api/admin/approvals/po/[id]/approve` |
+| Reconciliation | GET `/api/finance/reconciliation`, GET `[poId]`, POST `[poId]/submit` |
+| Payments | GET `/api/finance/payments?entityId=&status=`, GET `[id]`, POST `[id]/approve`, POST `[id]/execute` |
+| Inventory | GET `/api/inventory/grn/`, `/api/inventory/stock-overview/`, `/api/inventory/stock-ledger/` |
+| External Vendors | GET `/api/external-vendors/shivaang` |
 
 ---
 
@@ -244,10 +271,34 @@ const { id } = await params
 
 **Status Flow:** draft → pending_approval → approved → (GRN flow)
 
+### Slice 5: GRN & Inventory (In Progress)
+- **GRN Service**: createGRN (with inventory batch + stock ledger), getGRNs, getGRNById, getEligiblePOs, getPOForGRN
+- **Inventory Service**: getInventoryStock (queries InventoryBatch), getStockLedger
+- **GRN UI**: List page, create form (PO selector → line items → submit), detail page
+- **Stock Overview**: Real-time dashboard grouped by SKU, summary cards (total SKUs, low stock, out of stock, by type), expandable batch details, CSV export
+- **Stock Ledger**: Full transaction history with filters (product type, movement type, SKU, date range, search), pagination, color-coded movements, CSV export
+- **Admin Approvals UI**: PO approvals page with approve/reject dialogs
+- **API Routes**: `/api/inventory/grn/`, `/api/inventory/stock-overview/`, `/api/inventory/stock-ledger/`, `/api/admin/approvals/po/`
+
+### Slice 7: Finance ✅
+- **Reconciliation**: three-way match (PO vs GRN vs Invoice), entity assignment, transport/other charges, file attachments (invoice + signed GRN), payment auto-creation
+- **Payments**: approval workflow (pending_approval → approved → executed), execution with TDS, entity-specific payment listing pages
+- **Admin Payment Approvals**: dedicated page for approving/rejecting payments with inline dialogs
+- **Entity Payment Pages**: Fulton (`/finance/fulton`), MSE (`/finance/mse`), SNA (`/finance/sna`) - filtered payment lists per entity
+- **API Routes**: `/api/finance/reconciliation/`, `/api/finance/payments/`
+- **Status Flow**: PO: goods_received → payment_pending → payment_approved → paid; Payment: pending_approval → approved → executed
+
+### External Vendors: Shivaang ✅
+- **Dashboard**: Overview cards (total orders, pending, completed, total paid), tabbed interface
+- **Tabs**: Overview (partnership summary + quick actions), Transactions (interleaved POs/payments), Pending Orders (table), Payment History (table with paid amounts)
+- **API**: `GET /api/external-vendors/shivaang` - aggregates POs and payments filtered by Shivaang entity
+- **Data Source**: Queries PurchaseOrder and Payment where `entityId` matches Shivaang (set during reconciliation)
+- **Reusable Pattern**: Same approach works for any entity-specific vendor dashboard
+
 ### Not Yet Implemented
-- Slice 5: GRN & Inventory (API routes done, UI pending)
-- Slice 6: Production
-- Slice 7: Finance (Reconciliation + Payments done; Settlements, Invoices, Credits pending)
+- Slice 5: GRN & Inventory - outflow UI, adjustments UI
+- Slice 6: Production (service written, API routes/UI pending)
+- Slice 7: Finance - Settlements, Invoices, Credits (stub pages exist)
 - Channel-specific UIs (Amazon, Myntra fields)
 - Bulk operations, CSV import for products
 
@@ -272,6 +323,53 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ---
 
 ## Changelog
+
+### 2026-02-14 (external vendors)
+- **Shivaang External Vendor Dashboard**
+- API: `GET /api/external-vendors/shivaang` - aggregates POs and payments filtered by Shivaang entity ID
+- Dashboard page with 4 overview cards (total/pending/completed orders, total paid)
+- Tabbed UI: Overview (summary + quick actions), Transactions (interleaved activity feed), Pending Orders (table), Payment History (table with paid/TDS amounts)
+- Uses existing PO_STATUS_MAP and PAYMENT_STATUS_MAP for consistent status badges
+- Data sourced from PurchaseOrder and Payment tables filtered by entityId (no new schema needed)
+
+### 2026-02-14 (later)
+- **Finance Module - Reconciliation & Payments Complete**
+- Fixed 3 bugs in reconciliation-form.tsx: `receivedAt` → `grnDate`, `createdBy` → `user`, `item.product?.name` → `item.sku`
+- Enhanced reconciliation form: transport/other charges field, invoice & signed GRN file uploads, amount payable calculation, improved PO details layout
+- Updated reconciliation validator & service to support `transportCharges` and `grnAttachment`
+- Entity-specific payment pages: `/finance/fulton`, `/finance/mse`, `/finance/sna` (filter payments by entity)
+- Admin Payment Approvals page (`/admin/approvals/payments`): list pending payments, approve/reject with dialog
+- New component: `EntityPaymentList` - reusable entity-filtered payment list
+
+### 2026-02-14
+- **Stock Ledger & Stock Overview Implementation**
+- Stock Overview page (`/inventory`): summary cards (Total SKUs, Low Stock, Out of Stock, By Type), filterable stock table grouped by SKU, expandable batch details, CSV export
+- Stock Ledger page (`/inventory/ledger`): full transaction history with filters (product type, movement type, SKU, date range, search), pagination (50/page), color-coded quantity badges (green=in, red=out), CSV export
+- API: `GET /api/inventory/stock-overview` (aggregates InventoryBatch by SKU with summary stats)
+- API: `GET /api/inventory/stock-ledger` (StockLedger query with filters and pagination)
+- Navigation already configured in constants.ts
+
+### 2026-02-12 (later)
+- **Dual Pricing for Finished Products**
+- SupplierPricing model → polymorphic (productId + productType as plain strings, no FK to Product)
+- Added `tenantId`, `jobWorkRate`, `directPurchaseRate` fields; `unitPrice` now optional
+- Unique constraint: `[tenantId, supplierId, productId, productType]`
+- Finished lookup API returns both `jobWorkRate` and `directPurchaseRate`
+- AddLineItemDialog accepts `rawMaterialMode` prop; picks jobWorkRate for RM Issued, directPurchaseRate for Direct Purchase
+- POForm passes `rawMaterialMode` to AddLineItemDialog
+- Supplier pricing UI: shows Type, Direct Purchase Rate, Job Work Rate columns; CSV template updated
+- Supplier service: getPricing returns flat records (no Product join); uploadPricingFromCsv looks up SKUs across all product tables
+- Removed `supplierPricings` relation from Product model; fixed product-service.ts
+
+### 2026-02-12
+- **Schema alignment fixes** across all service files after schema restructure
+- `inventory-service.ts`: Rewrote to query InventoryBatch directly (Product has no inventoryBatches relation); StockLedger uses `batch` relation (no `product` relation)
+- `production-service.ts`: Fixed StockLedger creates (quantity → qtyIn/qtyOut/batchBalance/skuBalance/createdBy/referenceNumber); InventoryBatch quantity → currentQty; added userId params
+- `reconciliation-service.ts`: GRN receivedAt → grnDate; GRN createdBy include → user include
+- `finance-service.ts`: GRN receivedAt → grnDate
+- `grn-service.ts`: Full rewrite for new GRN fields (poNumber, supplierId, grnDate, receivedBy, status, createdBy/createdById); InventoryBatch create (not upsert); StockLedger new fields
+- GRN/Approvals UI: List, create form, detail pages for GRN; PO approvals page with approve/reject dialogs
+- All TypeScript errors resolved (tsc --noEmit clean)
 
 ### 2026-02-11
 - **Finance Module (Reconciliation + Payments)**

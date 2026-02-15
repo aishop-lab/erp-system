@@ -1,46 +1,43 @@
 import { prisma } from '@/lib/prisma'
-import { MovementType } from '@prisma/client'
 
 export async function getInventoryStock(tenantId: string, params?: {
   search?: string
+  productType?: string
   page?: number
   pageSize?: number
 }) {
-  const { search, page = 1, pageSize = 10 } = params || {}
+  const { search, productType, page = 1, pageSize = 10 } = params || {}
 
   const where = {
     tenantId,
+    status: 'active',
+    ...(productType && { productType }),
     ...(search && {
       OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
+        { batchNumber: { contains: search, mode: 'insensitive' as const } },
         { sku: { contains: search, mode: 'insensitive' as const } },
+        { productId: { contains: search, mode: 'insensitive' as const } },
       ],
     }),
   }
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
+  const [batches, total] = await Promise.all([
+    prisma.inventoryBatch.findMany({
       where,
       include: {
-        inventoryBatches: {
-          select: {
-            quantity: true,
-          },
+        grn: {
+          select: { grnNumber: true, poNumber: true },
         },
       },
+      orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.product.count({ where }),
+    prisma.inventoryBatch.count({ where }),
   ])
 
-  const stockData = products.map((product) => ({
-    ...product,
-    totalStock: product.inventoryBatches.reduce((sum, batch) => sum + batch.quantity, 0),
-  }))
-
   return {
-    data: stockData,
+    data: batches,
     total,
     page,
     pageSize,
@@ -50,7 +47,7 @@ export async function getInventoryStock(tenantId: string, params?: {
 
 export async function getStockLedger(tenantId: string, params?: {
   productId?: string
-  movementType?: MovementType
+  movementType?: string
   page?: number
   pageSize?: number
 }) {
@@ -66,8 +63,7 @@ export async function getStockLedger(tenantId: string, params?: {
     prisma.stockLedger.findMany({
       where,
       include: {
-        product: true,
-        inventoryBatch: true,
+        batch: true,
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
