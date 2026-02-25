@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/table'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
 import { Upload, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ReconciliationFormProps {
@@ -52,7 +53,6 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
   const [grnFile, setGrnFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     entityId: '',
-    invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     invoiceAmount: Number(purchaseOrder.grandTotal) || 0,
     transportCharges: 0,
@@ -79,29 +79,68 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
   const poVsGrn = Math.round((poTotal - grnTotal) * 100) / 100
   const poVsInvoice = Math.round((poTotal - invoiceAmount) * 100) / 100
 
+  const uploadFile = async (file: File, folder: string): Promise<string | null> => {
+    const supabase = createClient()
+    const timestamp = Date.now()
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    const filePath = `${folder}/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+
+    const { data, error } = await supabase.storage
+      .from('product-media')
+      .upload(filePath, file, { cacheControl: '3600', upsert: false })
+
+    if (error) {
+      console.error('Upload error:', error)
+      return null
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('product-media')
+      .getPublicUrl(filePath)
+
+    return urlData.publicUrl
+  }
+
   const handleSubmit = async () => {
     if (!form.entityId) {
       alert('Please select an entity')
       return
     }
-    if (!form.invoiceNumber) {
-      alert('Please enter the invoice number')
-      return
-    }
 
     setSubmitting(true)
     try {
+      // Upload files to Supabase Storage
+      let invoiceUrl: string | null = null
+      let grnUrl: string | null = null
+
+      if (invoiceFile) {
+        invoiceUrl = await uploadFile(invoiceFile, `reconciliation/${purchaseOrder.id}/invoices`)
+        if (!invoiceUrl) {
+          alert('Failed to upload invoice file. Please try again.')
+          setSubmitting(false)
+          return
+        }
+      }
+
+      if (grnFile) {
+        grnUrl = await uploadFile(grnFile, `reconciliation/${purchaseOrder.id}/grn`)
+        if (!grnUrl) {
+          alert('Failed to upload GRN file. Please try again.')
+          setSubmitting(false)
+          return
+        }
+      }
+
       const res = await fetch(`/api/finance/reconciliation/${purchaseOrder.id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entityId: form.entityId,
-          invoiceNumber: form.invoiceNumber,
           invoiceDate: new Date(form.invoiceDate).toISOString(),
           invoiceAmount: form.invoiceAmount,
           transportCharges: form.transportCharges,
-          invoiceAttachment: invoiceFile?.name,
-          grnAttachment: grnFile?.name,
+          invoiceAttachment: invoiceUrl || undefined,
+          grnAttachment: grnUrl || undefined,
           notes: form.notes || undefined,
         }),
       })
@@ -252,16 +291,6 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="invoiceNumber">Invoice Number *</Label>
-              <Input
-                id="invoiceNumber"
-                value={form.invoiceNumber}
-                onChange={(e) => setForm(f => ({ ...f, invoiceNumber: e.target.value }))}
-                placeholder="INV/2026/001"
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="invoiceDate">Invoice Date *</Label>
               <Input
                 id="invoiceDate"
@@ -293,7 +322,7 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
             <TableBody>
               {purchaseOrder.lineItems?.map((item: any) => (
                 <TableRow key={item.id}>
-                  <TableCell>{item.sku || item.description || '-'}</TableCell>
+                  <TableCell>{item.productName || item.productSku || '-'}</TableCell>
                   <TableCell className="text-right">
                     {Number(item.unitPrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                   </TableCell>
@@ -469,7 +498,7 @@ export function ReconciliationForm({ purchaseOrder }: ReconciliationFormProps) {
         <Button variant="outline" onClick={() => router.back()}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={submitting || !form.entityId || !form.invoiceNumber}>
+        <Button onClick={handleSubmit} disabled={submitting || !form.entityId}>
           {submitting ? <LoadingSpinner /> : 'Submit for Payment'}
         </Button>
       </div>

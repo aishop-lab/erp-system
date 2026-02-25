@@ -6,6 +6,10 @@
 
 # Testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
+e2e/fixtures/.auth/
 
 # Next.js
 /.next/

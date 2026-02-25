@@ -24,8 +24,6 @@ export async function GET(request: NextRequest) {
     const material = searchParams.get('material')
     const color = searchParams.get('color')
 
-    console.log('Fetching designs for:', { material, color })
-
     // Build where clause
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereClause: any = {
@@ -43,16 +41,12 @@ export async function GET(request: NextRequest) {
       distinct: ['design'],
     })
 
-    console.log(`Found ${fabrics.length} distinct designs`)
-
     // Return values as-is, deduplicate, and sort
     const designs = fabrics
       .map(f => f.design)
       .filter((v): v is string => !!v)
       .filter((value, index, self) => self.indexOf(value) === index)
       .sort()
-
-    console.log('Designs:', designs)
 
     return NextResponse.json({ designs })
   } catch (error) {

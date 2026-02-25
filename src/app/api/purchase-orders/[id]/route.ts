@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { getPurchaseOrderById } from '@/services/po-service'
-import { updatePurchaseOrderSchema } from '@/validators/purchase-order'
+import { createPurchaseOrderSchema } from '@/validators/purchase-order'
 import { POStatus } from '@prisma/client'
 import { z } from 'zod'
 
@@ -89,6 +89,10 @@ export async function PUT(
     }
 
     const body = await request.json()
+
+    // Validate input with Zod
+    const validatedBody = createPurchaseOrderSchema.partial().parse(body)
+
     const { lineItems, freeTextItems, refundItems, ...poData } = body
 
     // Calculate totals

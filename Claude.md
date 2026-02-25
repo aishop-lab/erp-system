@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-14 (External Vendors - Shivaang dashboard)
+> **Last Updated:** 2026-02-15 (Production Module - In-House + Job Work)
 
 ## Overview
 
@@ -12,7 +12,7 @@ Multi-tenant ERP system for managing users, suppliers, products, purchase orders
 
 ## Project Structure
 
-```
+```1
 src/
 ├── app/
 │   ├── (auth)/login/
@@ -23,7 +23,8 @@ src/
 │   │   ├── products/{styles,fabrics,raw-materials,packaging,finished}/
 │   │   ├── purchase-orders/, purchase-orders/new, [id]/, [id]/edit/
 │   │   ├── inventory/, inventory/grn/, inventory/ledger/
-│   │   ├── production/
+│   │   ├── production/, production/in-house/, production/in-house/new, [id]/
+│   │   ├── production/job-work/, production/job-work/issue/
 │   │   ├── finance/, finance/reconciliation/, finance/payments/
 │   │   ├── finance/{fulton,mse,sna}/        # Entity-specific payment pages
 │   │   └── profile/
@@ -38,6 +39,10 @@ src/
 │       │   └── search/                # Cross-library product search
 │       ├── purchase-orders/[id]/{submit,approve}/
 │       ├── inventory/{grn,stock-overview,stock-ledger}/
+│       ├── production/
+│       │   ├── orders/, orders/[id]/, orders/[id]/complete/
+│       │   ├── job-work/eligible-pos/, job-work/issue-rm/
+│       │   └── available-batches/
 │       └── finance/
 │           ├── reconciliation/[poId]/, [poId]/submit/
 │           └── payments/[id]/, [id]/{approve,execute}/
@@ -46,6 +51,7 @@ src/
 │   ├── shared/                # page-header, loading-spinner, vendor-selector, empty-state
 │   ├── products/media-upload.tsx
 │   ├── purchase-orders/       # po-form, po-list, po-detail, product-search, add-line-item-dialog
+│   ├── inventory/             # BarcodePrintModal, barcode-labels/ (Fabric, RawMaterial, Packaging, Finished)
 │   ├── finance/               # reconciliation-list, reconciliation-form, payment-list,
 │   │                          # payment-detail, payment-execution-form, entity-payment-list
 │   └── layout/sidebar.tsx, header.tsx
@@ -55,7 +61,7 @@ src/
 │   └── supabase/{client,server}.ts
 ├── services/                  # Business logic (supplier, user, settings, product-info,
 │                              # grn, inventory, reconciliation, finance, production)
-├── validators/                # Zod schemas (supplier, purchase-order, reconciliation, payment)
+├── validators/                # Zod schemas (supplier, purchase-order, reconciliation, payment, production)
 └── hooks/
 
 scripts/migrations/            # Data migration scripts (excluded from build)
@@ -102,7 +108,7 @@ data/                          # CSV files for migration
 - **StockLedger** - Polymorphic (productId + productType + sku, no FK); movementType is String (not enum); fields: qtyIn, qtyOut, batchBalance, skuBalance, createdBy (String), referenceNumber
 
 ### Production
-- **Production** - productionNumber, productionType (enum), status (enum), outputProductId, outputQuantity
+- **Production** - productionNumber, productionType (in_house|job_work), status (planned|materials_issued|in_progress|completed|cancelled), outputProductId, sku, productName, plannedQty, actualQty, rejectedQty, wasteQty, targetDate, completionDate, costs, completedById
 - **ProductionMaterial** - productId (FK to Product), quantity, batchId
 
 ### Finance
@@ -148,6 +154,9 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | Reconciliation | GET `/api/finance/reconciliation`, GET `[poId]`, POST `[poId]/submit` |
 | Payments | GET `/api/finance/payments?entityId=&status=`, GET `[id]`, POST `[id]/approve`, POST `[id]/execute` |
 | Inventory | GET `/api/inventory/grn/`, `/api/inventory/stock-overview/`, `/api/inventory/stock-ledger/` |
+| Production Orders | GET/POST `/api/production/orders`, GET `/api/production/orders/[id]`, POST `[id]/complete` |
+| Job Work | GET `/api/production/job-work/eligible-pos`, POST `/api/production/job-work/issue-rm` |
+| Available Batches | GET `/api/production/available-batches?productType=&search=` |
 | External Vendors | GET `/api/external-vendors/shivaang` |
 
 ---
@@ -295,9 +304,25 @@ const { id } = await params
 - **Data Source**: Queries PurchaseOrder and Payment where `entityId` matches Shivaang (set during reconciliation)
 - **Reusable Pattern**: Same approach works for any entity-specific vendor dashboard
 
+### Slice 5B: Barcode Labels ✅
+- **Barcode Print Modal**: Auto-opens after GRN creation with barcode labels for all received items
+- **4 Label Components**: FabricLabel, RawMaterialLabel, PackagingLabel, FinishedProductLabel
+- **Features**: CODE128 barcodes via JsBarcode, thermal printer-ready (50mm x 25mm), per-item quantity controls, live preview, react-to-print v3
+- **Components**: `src/components/inventory/BarcodePrintModal.tsx`, `src/components/inventory/barcode-labels/`
+
+### Slice 6: Production ✅
+- **In-House Production**: Create production orders (SKU, product name, planned qty, target date), list with search/pagination, detail page with cost summary
+- **Complete Production**: Dialog with actual qty, rejected, waste, labor/overhead costs; auto-creates output inventory batch + stock ledger entries; calculates total cost & cost/unit
+- **Job Work Orders**: Lists eligible POs (approved with rawMaterialMode), issue RM from inventory batches to vendors
+- **Batch Selection**: Dropdown of available batches with qty input, prevents duplicate batch selection
+- **Service**: `src/services/production-service.ts` - getProductions, createProduction, completeProduction, getEligiblePOsForRMIssuance, getAvailableBatches, issueRawMaterials
+- **API Routes**: 6 endpoints under `/api/production/`
+- **UI Pages**: 6 pages - dashboard with tabs, in-house list/new/detail, job work list/issue
+- **Status Flow**: planned → materials_issued → in_progress → completed
+- **Number Formats**: `PRD-YYMM-NNNN` (in-house), `JWK-YYMM-NNNN` (job work)
+
 ### Not Yet Implemented
 - Slice 5: GRN & Inventory - outflow UI, adjustments UI
-- Slice 6: Production (service written, API routes/UI pending)
 - Slice 7: Finance - Settlements, Invoices, Credits (stub pages exist)
 - Channel-specific UIs (Amazon, Myntra fields)
 - Bulk operations, CSV import for products
@@ -323,6 +348,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ---
 
 ## Changelog
+
+### 2026-02-15
+- **Production Module - In-House + Job Work**
+- Schema: Extended Production model with ~20 new fields (sku, productName, plannedQty, actualQty, costs, dates, completedById); added `materials_issued` to ProductionStatus enum
+- Service: Full rewrite of `production-service.ts` - completeProduction (material consumption, output batch, stock ledger, cost calc), getEligiblePOsForRMIssuance, getAvailableBatches
+- 6 API routes: `/api/production/orders` (GET/POST), `orders/[id]` (GET), `orders/[id]/complete` (POST), `job-work/eligible-pos` (GET), `job-work/issue-rm` (POST), `available-batches` (GET)
+- 6 UI pages: Production dashboard with tabs + stats, in-house list/new/detail, job work list + issue RM form
+- Complete production dialog: actual qty, rejected, waste, labor/overhead costs
+- Barcode label printing: 4 product-type labels (Fabric, RawMaterial, Packaging, Finished), BarcodePrintModal with qty controls, CODE128 via JsBarcode, react-to-print v3
+- GRN service updated to return inventoryBatches with product details for barcode generation
 
 ### 2026-02-14 (external vendors)
 - **Shivaang External Vendor Dashboard**

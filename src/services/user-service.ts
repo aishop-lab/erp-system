@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { CreateUserInput, UpdateUserInput } from '@/validators/user'
 import { PermissionLevel } from '@/types/enums'
+import { randomBytes } from 'crypto'
 
 // Lazy-initialized admin client for creating users
 let supabaseAdmin: SupabaseClient | null = null
@@ -22,12 +23,13 @@ function getSupabaseAdmin(): SupabaseClient {
   return supabaseAdmin
 }
 
-// Generate secure random password
+// Generate cryptographically secure random password
 function generatePassword(length: number = 14): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'
+  const bytes = randomBytes(length)
   let password = ''
   for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
+    password += chars.charAt(bytes[i] % chars.length)
   }
   return password
 }

@@ -27,6 +27,10 @@ export async function POST(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    if (!currentUser.isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
+    }
+
     const body = await request.json()
     const validatedData = executePaymentSchema.parse(body)
 

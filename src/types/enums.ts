@@ -115,6 +115,10 @@ export enum OutflowType {
   SAMPLE = 'sample',
   PRODUCTION_CONSUMPTION = 'production_consumption',
   MARKETING = 'marketing',
+  DAMAGE = 'damage',
+  RETURN_TO_SUPPLIER = 'return_to_supplier',
+  INTERNAL_USE = 'internal_use',
+  THEFT_LOSS = 'theft_loss',
   OTHER = 'other',
 }
 
@@ -125,6 +129,7 @@ export enum ProductionType {
 
 export enum ProductionStatus {
   PLANNED = 'planned',
+  MATERIALS_ISSUED = 'materials_issued',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',

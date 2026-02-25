@@ -152,22 +152,33 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
   const productType = PURCHASE_TYPE_PRODUCT_TYPES[purchaseType] as any
   const defaultGst = DEFAULT_GST_RATES[purchaseType]
 
-  // Fetch suppliers
+  // Fetch suppliers filtered by purchase type
   useEffect(() => {
-    fetchSuppliers()
-  }, [])
-
-  const fetchSuppliers = async () => {
-    try {
-      const res = await fetch('/api/suppliers/active')
-      if (res.ok) {
-        const data = await res.json()
-        setSuppliers(data.suppliers || [])
-      }
-    } catch (error) {
-      console.error('Error fetching suppliers:', error)
+    if (!purchaseType) {
+      setSuppliers([])
+      return
     }
-  }
+    const fetchSuppliers = async () => {
+      try {
+        const res = await fetch(`/api/suppliers/by-purchase-type?purchaseType=${encodeURIComponent(purchaseType)}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSuppliers(data || [])
+        }
+      } catch (error) {
+        console.error('Error fetching suppliers:', error)
+        setSuppliers([])
+      }
+    }
+    fetchSuppliers()
+  }, [purchaseType])
+
+  // Clear supplier when purchase type changes
+  useEffect(() => {
+    if (mode === 'create') {
+      setSupplierId('')
+    }
+  }, [purchaseType])
 
   // Calculate totals
   const calculateTotals = () => {
@@ -313,7 +324,7 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
         purchaseType,
         supplierId: supplierId || null,
         entryMode,
-        rawMaterialMode: purchaseType === PurchaseType.FINISHED ? rawMaterialMode : null,
+        rawMaterialMode: purchaseType === PurchaseType.FINISHED && rawMaterialMode ? rawMaterialMode : null,
         notes: notes || null,
         expectedDelivery: expectedDelivery ? new Date(expectedDelivery).toISOString() : null,
         lineItems: entryMode === EntryMode.CATALOG || entryMode === EntryMode.LINK_FINISHED

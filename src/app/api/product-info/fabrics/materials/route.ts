@@ -20,8 +20,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    console.log('🔍 Fetching materials for tenant:', currentUser.tenantId)
-
     // Get all active fabrics - we'll filter materials in JavaScript
     const fabrics = await prisma.fabric.findMany({
       where: {
@@ -32,19 +30,15 @@ export async function GET(request: NextRequest) {
       distinct: ['material'],
     })
 
-    console.log('📊 Found fabrics:', fabrics.length)
-
     // Filter out null/empty materials and get unique values
     const materials = fabrics
       .map(f => f.material)
       .filter((m): m is string => !!m) // Remove null/undefined/empty
       .sort()
 
-    console.log('✅ Materials:', materials)
-
     return NextResponse.json({ materials })
   } catch (error) {
-    console.error('❌ Error fetching materials:', error)
+    console.error('Error fetching materials:', error)
     return NextResponse.json(
       { error: 'Failed to fetch materials', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

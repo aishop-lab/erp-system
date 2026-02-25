@@ -65,6 +65,7 @@ model User {
   createdPayments        Payment[]          @relation("PaymentCreatedBy")
   executedPayments       Payment[]          @relation("PaymentExecutedBy")
   createdProductions     Production[]       @relation("ProductionCreatedBy")
+  completedProductions   Production[]       @relation("ProductionCompletedBy")
   approvedPurchaseOrders PurchaseOrder[]    @relation("ApprovedBy")
   createdPurchaseOrders  PurchaseOrder[]    @relation("CreatedBy")
   reconciledPurchaseOrders PurchaseOrder[]  @relation("ReconciledBy")
@@ -279,9 +280,6 @@ model Product {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   //inventoryBatches    InventoryBatch[]
-  outflowItems        OutflowItem[]
-  poRmIssuanceItems   PORmIssuanceItem[]
-  productionMaterials ProductionMaterial[]
   category            ProductCategory?     @relation(fields: [categoryId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
   //stockLedger         StockLedger[]
@@ -315,6 +313,8 @@ model PurchaseOrder {
   invoiceDate          DateTime?
   invoiceAmount        Decimal?             @db.Decimal(14, 2)
   invoiceAttachment    String?
+  grnAttachment        String?
+  transportCharges     Decimal?             @db.Decimal(14, 2)
   reconciliationNotes  String?
   reconciledById       String?
   reconciledAt         DateTime?
@@ -412,14 +412,14 @@ model PORmIssuance {
 model PORmIssuanceItem {
   id             String          @id @default(cuid())
   issuanceId     String
-  productId      String
+  productId      String?
+  productType    String?         // 'finished', 'fabric', 'raw_material', 'packaging'
   quantity       Int
   batchId        String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   inventoryBatch InventoryBatch? @relation(fields: [batchId], references: [id])
   issuance       PORmIssuance    @relation(fields: [issuanceId], references: [id], onDelete: Cascade)
-  product        Product         @relation(fields: [productId], references: [id])
 
   @@map("po_rm_issuance_items")
 }
@@ -513,6 +513,7 @@ model InventoryBatch {
   // Relations
   stockLedger     StockLedger[]
   outflowItems    OutflowItem[]
+  adjustments     StockAdjustment[]
   rmIssuanceItems PORmIssuanceItem[]
   
   @@map("inventory_batches")
@@ -562,39 +563,71 @@ model StockLedger {
 model InventoryOutflow {
   id             String             @id @default(cuid())
   tenantId       String
-  outflowNumber  String
+  outflowNumber  String             @unique
   outflowType    OutflowType
-  entityId       String
+  entityId       String?
   salesChannelId String?
   orderReference String?
-  notes          String?
+
+  // Recipient
+  recipientName  String?
+  recipientType  String?            // 'customer', 'influencer', 'supplier', 'internal'
+
+  // Dates & status
+  outflowDate    DateTime           @default(now())
+  status         String             @default("completed")
+
+  // Totals
+  totalItems     Int                @default(0)
+  totalQuantity  Decimal            @db.Decimal(15,3) @default(0)
+
+  notes          String?            @db.Text
+  createdBy      String?
   createdById    String
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
-  createdBy      User               @relation(fields: [createdById], references: [id])
-  entity         Entity             @relation(fields: [entityId], references: [id])
+
+  // Relations
+  user           User               @relation(fields: [createdById], references: [id])
+  entity         Entity?            @relation(fields: [entityId], references: [id])
   salesChannel   SalesChannel?      @relation(fields: [salesChannelId], references: [id])
   tenant         Tenant             @relation(fields: [tenantId], references: [id])
   items          OutflowItem[]
   packaging      OutflowPackaging[]
 
-  @@unique([tenantId, outflowNumber])
   @@index([tenantId])
+  @@index([outflowType])
+  @@index([outflowDate])
   @@map("inventory_outflows")
 }
 
 model OutflowItem {
   id             String           @id @default(cuid())
   outflowId      String
-  productId      String
-  batchId        String?
-  quantity       Int
+
+  // Product details (polymorphic)
+  productId      String?
+  productType    String?          // 'finished', 'fabric', 'raw_material', 'packaging'
+  sku            String?
+  productName    String?
+
+  // Batch tracking
+  batchId        String
+  batchNumber    String?
+
+  // Quantity & cost
+  quantity       Decimal          @db.Decimal(15,3)
+  reason         String?          @db.Text
+
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-  inventoryBatch InventoryBatch?  @relation(fields: [batchId], references: [id])
-  outflow        InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
-  product        Product          @relation(fields: [productId], references: [id])
 
+  // Relations
+  inventoryBatch InventoryBatch   @relation(fields: [batchId], references: [id])
+  outflow        InventoryOutflow @relation(fields: [outflowId], references: [id], onDelete: Cascade)
+
+  @@index([outflowId])
+  @@index([batchId])
   @@map("outflow_items")
 }
 
@@ -611,21 +644,44 @@ model OutflowPackaging {
 }
 
 model StockAdjustment {
-  id             String         @id @default(cuid())
-  tenantId       String
-  adjustmentType AdjustmentType
-  productId      String
-  batchId        String?
-  quantity       Int
-  reason         String
-  approvedById   String?
-  createdById    String
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  createdBy      User           @relation(fields: [createdById], references: [id])
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  id                 String         @id @default(cuid())
+  tenantId           String
+  adjustmentNumber   String         @unique
+  adjustmentType     AdjustmentType
+
+  // Product details (polymorphic)
+  productId          String?
+  productType        String?
+  sku                String?
+  productName        String?
+
+  // Batch tracking
+  batchId            String
+  batch              InventoryBatch @relation(fields: [batchId], references: [id])
+  batchNumber        String?
+
+  // Quantities
+  systemQuantity     Decimal        @db.Decimal(15,3)
+  actualQuantity     Decimal        @db.Decimal(15,3)
+  adjustmentQuantity Decimal        @db.Decimal(15,3)
+
+  reason             String
+  adjustmentDate     DateTime       @default(now())
+  notes              String?        @db.Text
+  status             String         @default("completed")
+
+  // Audit
+  createdBy          String?
+  createdById        String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // Relations
+  user               User           @relation(fields: [createdById], references: [id])
+  tenant             Tenant         @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+  @@index([batchId])
   @@map("stock_adjustments")
 }
 
@@ -635,32 +691,66 @@ model Production {
   productionNumber String
   productionType   ProductionType
   status           ProductionStatus     @default(planned)
+
+  // Output product
   outputProductId  String?
   outputQuantity   Int?
+  sku              String?
+  productName      String?
+
+  // Quantities
+  plannedQty       Decimal?             @db.Decimal(15,3)
+  actualQty        Decimal?             @db.Decimal(15,3)
+  rejectedQty      Decimal?             @db.Decimal(15,3) @default(0)
+  wasteQty         Decimal?             @db.Decimal(15,3) @default(0)
+
+  // Dates
   startDate        DateTime?
   endDate          DateTime?
-  notes            String?
+  targetDate       DateTime?
+  completionDate   DateTime?
+
+  // Location
+  productionLine   String?
+  location         String?
+
+  // Costs
+  materialCost     Decimal?             @db.Decimal(15,2)
+  laborCost        Decimal?             @db.Decimal(15,2)
+  overheadCost     Decimal?             @db.Decimal(15,2)
+  totalCost        Decimal?             @db.Decimal(15,2)
+  costPerUnit      Decimal?             @db.Decimal(15,2)
+
+  notes            String?              @db.Text
+
+  // Audit
   createdById      String
+  completedBy      String?
+  completedById    String?
+
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
+
   materials        ProductionMaterial[]
   createdBy        User                 @relation("ProductionCreatedBy", fields: [createdById], references: [id])
+  completedByUser  User?                @relation("ProductionCompletedBy", fields: [completedById], references: [id])
   tenant           Tenant               @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, productionNumber])
   @@index([tenantId])
+  @@index([status])
   @@map("productions")
 }
 
 model ProductionMaterial {
   id           String     @id @default(cuid())
   productionId String
-  productId    String
+  productId    String?
+  productType  String?    // 'finished', 'fabric', 'raw_material', 'packaging'
   quantity     Int
   batchId      String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
-  product      Product    @relation(fields: [productId], references: [id])
   production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
 
   @@map("production_materials")
@@ -1253,6 +1343,10 @@ enum OutflowType {
   sample
   production_consumption
   marketing
+  damage
+  return_to_supplier
+  internal_use
+  theft_loss
   other
 }
 
@@ -1263,6 +1357,7 @@ enum ProductionType {
 
 enum ProductionStatus {
   planned
+  materials_issued
   in_progress
   completed
   cancelled

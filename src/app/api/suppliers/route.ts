@@ -71,29 +71,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Received supplier data:', JSON.stringify(body, null, 2))
-
     // Validate with Zod
     let validatedData
     try {
       validatedData = createSupplierSchema.parse(body)
     } catch (validationError: any) {
-      console.error('Validation error:', validationError)
       return NextResponse.json(
         { error: 'Validation error', details: validationError.errors || validationError.message },
         { status: 400 }
       )
     }
 
-    console.log('Validated data:', JSON.stringify(validatedData, null, 2))
-
     // Create supplier
     const supplier = await SupplierService.createSupplier(currentUser.tenantId, validatedData)
 
     return NextResponse.json(supplier, { status: 201 })
   } catch (error: any) {
-    console.error('Error creating supplier:', error)
-    console.error('Error stack:', error.stack)
+    console.error('Error creating supplier:', error?.message)
 
     // Always return a proper JSON response
     return NextResponse.json(

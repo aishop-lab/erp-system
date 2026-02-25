@@ -176,6 +176,7 @@ export const PAYMENT_STATUS_MAP: StatusMap = {
 
 export const PRODUCTION_STATUS_MAP: StatusMap = {
   [ProductionStatus.PLANNED]: { label: 'Planned', variant: 'secondary' },
+  [ProductionStatus.MATERIALS_ISSUED]: { label: 'Materials Issued', variant: 'default' },
   [ProductionStatus.IN_PROGRESS]: { label: 'In Progress', variant: 'warning' },
   [ProductionStatus.COMPLETED]: { label: 'Completed', variant: 'success' },
   [ProductionStatus.CANCELLED]: { label: 'Cancelled', variant: 'destructive' },

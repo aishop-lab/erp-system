@@ -2,6 +2,50 @@ import { prisma } from '@/lib/prisma'
 import { POStatus, GoodsCondition } from '@prisma/client'
 import type { CreateGRNInput } from '@/validators/grn'
 
+async function getProductDescription(productId: string | null, productType: string | null): Promise<string | null> {
+  if (!productId || !productType) return null
+
+  switch (productType) {
+    case 'fabric': {
+      const fabric = await prisma.fabric.findUnique({
+        where: { id: productId },
+        select: { material: true, color: true, design: true, work: true, fabricSku: true },
+      })
+      if (!fabric) return null
+      const parts = [fabric.material, fabric.color, fabric.design, fabric.work].filter(p => p && p !== 'None')
+      return parts.join(' - ') || fabric.fabricSku || null
+    }
+    case 'raw_material': {
+      const rm = await prisma.rawMaterial.findUnique({
+        where: { id: productId },
+        select: { rmType: true, color: true, rmSku: true },
+      })
+      if (!rm) return null
+      const parts = [rm.rmType, rm.color].filter(p => p && p !== 'None')
+      return parts.join(' - ') || rm.rmSku || null
+    }
+    case 'packaging': {
+      const pkg = await prisma.packaging.findUnique({
+        where: { id: productId },
+        select: { pkgType: true, dimensions: true, pkgSku: true },
+      })
+      if (!pkg) return null
+      const parts = [pkg.pkgType, pkg.dimensions].filter(p => p && p !== 'None')
+      return parts.join(' - ') || pkg.pkgSku || null
+    }
+    case 'finished': {
+      const fp = await prisma.finishedProduct.findUnique({
+        where: { id: productId },
+        select: { title: true, size: true, color: true, childSku: true },
+      })
+      if (!fp) return null
+      return fp.title || fp.childSku || null
+    }
+    default:
+      return null
+  }
+}
+
 export async function generateGRNNumber(tenantId: string) {
   const year = new Date().getFullYear()
 
@@ -125,21 +169,23 @@ export async function getPOForGRN(poId: string, tenantId: string) {
   if (!po) return null
 
   // Calculate remaining quantities per line item from GRNLineItem aggregation
-  const lineItems = po.lineItems.map(item => {
+  const lineItems = await Promise.all(po.lineItems.map(async item => {
     const totalReceived = item.grnLineItems.reduce(
       (sum, grn) => sum + grn.receivedQty, 0
     )
+    const productDescription = await getProductDescription(item.productId, item.productType)
     return {
       id: item.id,
       productId: item.productId,
       productType: item.productType,
+      productDescription,
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
       taxRate: Number(item.taxRate),
       receivedQty: totalReceived,
       remainingQty: Number(item.quantity) - totalReceived,
     }
-  })
+  }))
 
   return {
     id: po.id,
@@ -315,6 +361,14 @@ export async function createGRN(
         createdAt: batch.createdAt,
       })
 
+      // Query the running skuBalance for this SKU
+      const lastSkuEntry = sku ? await tx.stockLedger.findFirst({
+        where: { tenantId, sku },
+        orderBy: { createdAt: 'desc' },
+        select: { skuBalance: true },
+      }) : null
+      const prevSkuBalance = lastSkuEntry ? Number(lastSkuEntry.skuBalance) : 0
+
       // Stock ledger entry
       await tx.stockLedger.create({
         data: {
@@ -331,7 +385,7 @@ export async function createGRN(
           qtyIn: item.acceptedQty,
           qtyOut: 0,
           batchBalance: item.acceptedQty,
-          skuBalance: item.acceptedQty,
+          skuBalance: prevSkuBalance + item.acceptedQty,
           notes: `GRN ${grnNumber} - Accepted ${item.acceptedQty} units`,
           createdBy: userId,
         },
@@ -503,9 +557,21 @@ export async function getGRNById(id: string, tenantId: string) {
 
   if (!grn) return null
 
+  // Enrich line items with product descriptions
+  const enrichedLineItems = await Promise.all(
+    grn.lineItems.map(async (item) => {
+      const productDescription = await getProductDescription(
+        item.poLineItem?.productId || null,
+        item.poLineItem?.productType || null
+      )
+      return { ...item, productDescription }
+    })
+  )
+
   // Map user → createdByUser for API consistency
   return {
     ...grn,
+    lineItems: enrichedLineItems,
     createdByUser: grn.user,
   }
 }

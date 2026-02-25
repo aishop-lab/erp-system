@@ -69,8 +69,8 @@ export function BarcodePrintModal({
     documentTitle: `Barcode_Labels_${grnNumber}`,
     pageStyle: `
       @page {
-        size: 50mm 25mm;
-        margin: 0;
+        size: A4;
+        margin: 5mm 5mm;
       }
       @media print {
         body {
@@ -79,6 +79,9 @@ export function BarcodePrintModal({
         }
         .no-print {
           display: none !important;
+        }
+        .barcode-label-grid > div {
+          border: none !important;
         }
       }
     `,
@@ -189,9 +192,13 @@ export function BarcodePrintModal({
           <h3 className="font-semibold text-sm mb-3 no-print">Preview</h3>
           <div
             ref={printRef}
-            className="flex flex-wrap gap-3 justify-center"
+            className="barcode-label-grid"
             style={{
-              padding: '4mm',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 50mm)',
+              gridAutoRows: '25mm',
+              justifyContent: 'center',
+              gap: 0,
               background: 'white',
             }}
           >

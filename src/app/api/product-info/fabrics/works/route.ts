@@ -25,8 +25,6 @@ export async function GET(request: NextRequest) {
     const color = searchParams.get('color')
     const design = searchParams.get('design')
 
-    console.log('Fetching works for:', { material, color, design })
-
     // Build where clause with proper NULL handling
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereClause: any = {
@@ -40,8 +38,6 @@ export async function GET(request: NextRequest) {
     // "None" is stored as string in database, not NULL - pass as-is
     if (design) whereClause.design = design
 
-    console.log('Where clause:', whereClause)
-
     // Get all fabrics matching material + color + design
     const fabrics = await prisma.fabric.findMany({
       where: whereClause,
@@ -49,16 +45,12 @@ export async function GET(request: NextRequest) {
       distinct: ['work'],
     })
 
-    console.log(`Found ${fabrics.length} distinct works`)
-
     // Return values as-is, deduplicate, and sort
     const works = fabrics
       .map(f => f.work)
       .filter((v): v is string => !!v)
       .filter((value, index, self) => self.indexOf(value) === index)
       .sort()
-
-    console.log('Works:', works)
 
     return NextResponse.json({ works })
   } catch (error) {

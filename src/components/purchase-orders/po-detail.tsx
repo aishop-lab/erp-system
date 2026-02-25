@@ -312,11 +312,11 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
                     <TableCell>
                       <div>
                         <span className="font-medium">
-                          {item.product?.sku || item.product?.childSku || '-'}
+                          {item.productSku || '-'}
                         </span>
                         <br />
                         <span className="text-sm text-muted-foreground">
-                          {item.product?.title || item.product?.name || '-'}
+                          {item.productName || '-'}
                         </span>
                       </div>
                     </TableCell>

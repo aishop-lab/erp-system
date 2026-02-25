@@ -125,6 +125,69 @@ export async function getPOForReconciliation(poId: string, tenantId: string) {
     }
   })
 
+  // Enrich line items with product names from catalog tables
+  const enrichedLineItems = await Promise.all(
+    lineItemsWithGRN.map(async (item: any) => {
+      if (!item.productId) return { ...item, productName: null, productSku: null }
+
+      let productName: string | null = null
+      let productSku: string | null = null
+
+      try {
+        switch (item.productType) {
+          case 'finished': {
+            const p = await prisma.finishedProduct.findUnique({
+              where: { id: item.productId },
+              select: { title: true, childSku: true },
+            })
+            productName = p?.title || null
+            productSku = p?.childSku || null
+            break
+          }
+          case 'fabric': {
+            const p = await prisma.fabric.findUnique({
+              where: { id: item.productId },
+              select: { material: true, color: true, fabricSku: true },
+            })
+            productName = p ? `${p.material} - ${p.color}` : null
+            productSku = p?.fabricSku || null
+            break
+          }
+          case 'raw_material': {
+            const p = await prisma.rawMaterial.findUnique({
+              where: { id: item.productId },
+              select: { rmType: true, color: true, rmSku: true },
+            })
+            productName = p ? `${p.rmType}${p.color ? ` - ${p.color}` : ''}` : null
+            productSku = p?.rmSku || null
+            break
+          }
+          case 'packaging': {
+            const p = await prisma.packaging.findUnique({
+              where: { id: item.productId },
+              select: { pkgType: true, dimensions: true, pkgSku: true },
+            })
+            productName = p ? `${p.pkgType}${p.dimensions ? ` (${p.dimensions})` : ''}` : null
+            productSku = p?.pkgSku || null
+            break
+          }
+          default: {
+            const p = await prisma.finishedProduct.findUnique({
+              where: { id: item.productId },
+              select: { title: true, childSku: true },
+            }).catch(() => null)
+            productName = p?.title || null
+            productSku = p?.childSku || null
+          }
+        }
+      } catch {
+        // Product may have been deleted
+      }
+
+      return { ...item, productName, productSku }
+    })
+  )
+
   const poTotal = Number(po.grandTotal)
   const grnTotal = lineItemsWithGRN.reduce((sum: number, item: any) => {
     return sum + item.totalAccepted * item.unitPrice * (1 + item.taxRate / 100)
@@ -135,10 +198,32 @@ export async function getPOForReconciliation(poId: string, tenantId: string) {
     totalAmount: Number(po.totalAmount),
     taxAmount: Number(po.taxAmount),
     grandTotal: poTotal,
-    lineItems: lineItemsWithGRN,
+    lineItems: enrichedLineItems,
     grnTotal: Math.round(grnTotal * 100) / 100,
     variance: Math.round((poTotal - grnTotal) * 100) / 100,
   }
+}
+
+async function generateInvoiceNumber(tenantId: string): Promise<string> {
+  const year = new Date().getFullYear().toString().slice(-2)
+  const month = (new Date().getMonth() + 1).toString().padStart(2, '0')
+  const prefix = `INV-${year}${month}`
+
+  const lastPO = await prisma.purchaseOrder.findFirst({
+    where: {
+      tenantId,
+      invoiceNumber: { startsWith: prefix },
+    },
+    orderBy: { invoiceNumber: 'desc' },
+  })
+
+  let sequence = 1
+  if (lastPO?.invoiceNumber) {
+    const lastSequence = parseInt(lastPO.invoiceNumber.split('-').pop() || '0')
+    sequence = lastSequence + 1
+  }
+
+  return `${prefix}-${sequence.toString().padStart(4, '0')}`
 }
 
 export async function submitReconciliation(
@@ -171,6 +256,9 @@ export async function submitReconciliation(
     throw new Error('Entity not found or inactive')
   }
 
+  // Generate invoice number
+  const invoiceNumber = await generateInvoiceNumber(tenantId)
+
   // Generate payment number
   const year = new Date().getFullYear().toString().slice(-2)
   const month = (new Date().getMonth() + 1).toString().padStart(2, '0')
@@ -197,10 +285,12 @@ export async function submitReconciliation(
       where: { id: poId },
       data: {
         entityId: data.entityId,
-        invoiceNumber: data.invoiceNumber,
+        invoiceNumber,
         invoiceDate: new Date(data.invoiceDate),
         invoiceAmount: data.invoiceAmount,
         invoiceAttachment: data.invoiceAttachment,
+        grnAttachment: data.grnAttachment,
+        transportCharges: data.transportCharges,
         reconciliationNotes: data.notes,
         reconciledById: userId,
         reconciledAt: new Date(),
@@ -217,7 +307,7 @@ export async function submitReconciliation(
         supplierId: po.supplierId,
         entityId: data.entityId,
         amount: data.invoiceAmount + (data.transportCharges || 0),
-        invoiceNumber: data.invoiceNumber,
+        invoiceNumber,
         invoiceDate: new Date(data.invoiceDate),
         invoiceAmount: data.invoiceAmount,
         invoiceAttachment: data.invoiceAttachment,

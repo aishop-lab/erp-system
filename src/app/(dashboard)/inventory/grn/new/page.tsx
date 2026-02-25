@@ -62,6 +62,7 @@ interface POForGRN {
     id: string
     productId: string | null
     productType: string | null
+    productDescription: string | null
     quantity: number
     unitPrice: number
     taxRate: number
@@ -72,6 +73,7 @@ interface POForGRN {
     id: string
     productId: string | null
     productType: string | null
+    productDescription: string | null
     quantity: number
     unitPrice: number
     taxRate: number
@@ -84,6 +86,7 @@ interface GRNLineEntry {
   poLineItemId: string
   productId: string | null
   productType: string | null
+  productDescription: string | null
   orderedQty: number
   previouslyReceived: number
   pendingQty: number
@@ -147,6 +150,7 @@ export default function NewGRNPage() {
             poLineItemId: item.id,
             productId: item.productId,
             productType: item.productType,
+            productDescription: item.productDescription,
             orderedQty: item.quantity,
             previouslyReceived: item.receivedQty,
             pendingQty: item.remainingQty,
@@ -388,7 +392,7 @@ export default function NewGRNPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[120px]">Product ID</TableHead>
+                      <TableHead className="min-w-[180px]">Product</TableHead>
                       <TableHead className="text-right">Ordered</TableHead>
                       <TableHead className="text-right">Prev. Received</TableHead>
                       <TableHead className="text-right">Pending</TableHead>
@@ -402,11 +406,13 @@ export default function NewGRNPage() {
                   <TableBody>
                     {lineItems.map((item, index) => (
                       <TableRow key={item.poLineItemId}>
-                        <TableCell className="font-mono text-xs">
-                          {item.productId?.slice(0, 12) || '-'}
+                        <TableCell>
+                          <div className="font-medium text-sm">
+                            {item.productDescription || item.productId?.slice(0, 12) || '-'}
+                          </div>
                           {item.productType && (
-                            <Badge variant="outline" className="ml-1 text-xs">
-                              {item.productType}
+                            <Badge variant="outline" className="text-xs mt-1">
+                              {item.productType.replace(/_/g, ' ')}
                             </Badge>
                           )}
                         </TableCell>

@@ -55,7 +55,7 @@ export async function getPurchaseOrders(tenantId: string, params?: {
 }
 
 export async function getPurchaseOrderById(id: string, tenantId: string) {
-  return prisma.purchaseOrder.findFirst({
+  const po = await prisma.purchaseOrder.findFirst({
     where: { id, tenantId },
     include: {
       supplier: true,
@@ -69,7 +69,6 @@ export async function getPurchaseOrderById(id: string, tenantId: string) {
         include: {
           items: {
             include: {
-              product: true,
               inventoryBatch: true,
             },
           },
@@ -79,6 +78,74 @@ export async function getPurchaseOrderById(id: string, tenantId: string) {
       payments: true,
     },
   })
+
+  if (!po) return null
+
+  // Enrich line items with product names from catalog tables
+  const enrichedLineItems = await Promise.all(
+    po.lineItems.map(async (item) => {
+      if (!item.productId) return { ...item, productName: null, productSku: null }
+
+      let productName: string | null = null
+      let productSku: string | null = null
+
+      try {
+        switch (item.productType) {
+          case 'finished': {
+            const p = await prisma.finishedProduct.findUnique({
+              where: { id: item.productId },
+              select: { title: true, childSku: true },
+            })
+            productName = p?.title || null
+            productSku = p?.childSku || null
+            break
+          }
+          case 'fabric': {
+            const p = await prisma.fabric.findUnique({
+              where: { id: item.productId },
+              select: { material: true, color: true, fabricSku: true },
+            })
+            productName = p ? `${p.material} - ${p.color}` : null
+            productSku = p?.fabricSku || null
+            break
+          }
+          case 'raw_material': {
+            const p = await prisma.rawMaterial.findUnique({
+              where: { id: item.productId },
+              select: { rmType: true, color: true, rmSku: true },
+            })
+            productName = p ? `${p.rmType}${p.color ? ` - ${p.color}` : ''}` : null
+            productSku = p?.rmSku || null
+            break
+          }
+          case 'packaging': {
+            const p = await prisma.packaging.findUnique({
+              where: { id: item.productId },
+              select: { pkgType: true, dimensions: true, pkgSku: true },
+            })
+            productName = p ? `${p.pkgType}${p.dimensions ? ` (${p.dimensions})` : ''}` : null
+            productSku = p?.pkgSku || null
+            break
+          }
+          default: {
+            // Try FinishedProduct as fallback
+            const p = await prisma.finishedProduct.findUnique({
+              where: { id: item.productId },
+              select: { title: true, childSku: true },
+            }).catch(() => null)
+            productName = p?.title || null
+            productSku = p?.childSku || null
+          }
+        }
+      } catch {
+        // Product may have been deleted
+      }
+
+      return { ...item, productName, productSku }
+    })
+  )
+
+  return { ...po, lineItems: enrichedLineItems }
 }
 
 export async function generatePONumber(tenantId: string, purchaseType: string) {
@@ -110,73 +177,37 @@ export async function createPurchaseOrder(
   userId: string,
   data: CreatePurchaseOrderInput
 ) {
-  // 🔍 DIAGNOSTIC LOGGING - See what data is coming in
-  console.log('🔍 Service received data:', {
-    purchaseType: data.purchaseType,
-    supplierId: data.supplierId,
-    entryMode: data.entryMode,
-    rawMaterialMode: data.rawMaterialMode,
-    hasLineItems: !!data.lineItems,
-    lineItemsCount: data.lineItems?.length || 0,
-    hasFreeTextItems: !!data.freeTextItems,
-    hasRefundItems: !!data.refundItems,
-  })
-
-  // Log first line item to see structure
-  if (data.lineItems && data.lineItems.length > 0) {
-    console.log('🔍 First line item structure:', JSON.stringify(data.lineItems[0], null, 2))
-  }
-
   const { lineItems, freeTextItems, refundItems, ...poData } = data
 
   const poNumber = await generatePONumber(tenantId, data.purchaseType)
-  console.log('✅ Generated PO Number:', poNumber)
 
   // Calculate totals
   let totalAmount = 0
   let taxAmount = 0
 
   if (lineItems) {
-    console.log('💰 Calculating line items totals...')
     for (const item of lineItems) {
-      // Log each item being processed
-      console.log('Processing item:', {
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        taxRate: item.taxRate
-      })
-
       const itemTotal = item.quantity * item.unitPrice
       const itemTax = itemTotal * ((item.taxRate || 0) / 100)
       totalAmount += itemTotal
       taxAmount += itemTax
     }
-    console.log('Line items totals:', { totalAmount, taxAmount })
   }
 
   if (freeTextItems) {
-    console.log('💰 Calculating free text items totals...')
     for (const item of freeTextItems) {
       const itemTotal = (item.quantity || 1) * item.unitPrice
       const itemTax = itemTotal * ((item.taxRate || 0) / 100)
       totalAmount += itemTotal
       taxAmount += itemTax
     }
-    console.log('Free text items totals:', { totalAmount, taxAmount })
   }
 
   if (refundItems) {
-    console.log('💰 Calculating refund items totals...')
     for (const item of refundItems) {
       totalAmount += item.amount
     }
-    console.log('Refund items totals:', { totalAmount })
   }
-
-  console.log('📊 Final totals:', { totalAmount, taxAmount, grandTotal: totalAmount + taxAmount })
-
-  console.log('💾 Creating PO in database...')
 
   return prisma.purchaseOrder.create({
     data: {

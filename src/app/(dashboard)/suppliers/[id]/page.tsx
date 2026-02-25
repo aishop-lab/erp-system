@@ -380,20 +380,36 @@ export default function SupplierDetailPage() {
   }
 
   const syncContacts = async () => {
+    const errors: string[] = []
     for (const contact of contacts) {
-      if (!contact.id && contact.name.trim()) {
-        await fetch(`/api/suppliers/${id}/contacts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(contact),
-        })
-      } else if (contact.id) {
-        await fetch(`/api/suppliers/${id}/contacts/${contact.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(contact),
-        })
+      try {
+        if (!contact.id && contact.name.trim()) {
+          const res = await fetch(`/api/suppliers/${id}/contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(contact),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`Failed to create contact "${contact.name}": ${data.error || res.statusText}`)
+          }
+        } else if (contact.id) {
+          const res = await fetch(`/api/suppliers/${id}/contacts/${contact.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(contact),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`Failed to update contact "${contact.name}": ${data.error || res.statusText}`)
+          }
+        }
+      } catch (err: any) {
+        errors.push(`Error syncing contact "${contact.name}": ${err.message}`)
       }
+    }
+    if (errors.length > 0) {
+      setError(`Supplier saved, but some contacts had errors: ${errors.join('; ')}`)
     }
   }
 

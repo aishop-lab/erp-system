@@ -595,10 +595,8 @@ export function AddLineItemDialog({
         url += `&supplierId=${supplierId}`
       }
 
-      console.log('🔍 Fetching product:', url)
       const res = await fetch(url)
       const data = await res.json()
-      console.log('🔍 Product response:', res.status, data)
 
       if (res.ok && data.product) {
         setProductDetails(data.product)
@@ -696,10 +694,8 @@ export function AddLineItemDialog({
         url += `&supplierId=${supplierId}`
       }
 
-      console.log('🔍 Fetching fabric:', url)
       const res = await fetch(url)
       const data = await res.json()
-      console.log('🔍 Fabric response:', res.status, data)
 
       if (res.ok && data.fabric) {
         setFabricDetails(data.fabric)
@@ -763,10 +759,8 @@ export function AddLineItemDialog({
         url += `&supplierId=${supplierId}`
       }
 
-      console.log('🔍 Fetching raw material:', url)
       const res = await fetch(url)
       const data = await res.json()
-      console.log('🔍 Raw material response:', res.status, data)
 
       if (res.ok && data.rawMaterial) {
         setRawMaterialDetails(data.rawMaterial)
@@ -847,10 +841,8 @@ export function AddLineItemDialog({
         url += `&supplierId=${supplierId}`
       }
 
-      console.log('🔍 Fetching packaging:', url)
       const res = await fetch(url)
       const data = await res.json()
-      console.log('🔍 Packaging response:', res.status, data)
 
       if (res.ok && data.packaging) {
         setPackagingDetails(data.packaging)
@@ -923,16 +915,6 @@ export function AddLineItemDialog({
   // ============================================
 
   function handleAdd() {
-    console.log('🔍 handleAdd called', {
-      purchaseType,
-      isFinishedType: isFinishedType(),
-      productDetails: !!productDetails,
-      fabricDetails: !!fabricDetails,
-      rawMaterialDetails: !!rawMaterialDetails,
-      packagingDetails: !!packagingDetails,
-      quantity,
-    })
-
     if (isFinishedType() && productDetails) {
       let unitPrice = productDetails.costPrice
       if (rawMaterialMode === 'raw_materials_issued' && supplierPricing?.jobWorkRate) {
@@ -951,7 +933,6 @@ export function AddLineItemDialog({
         taxRate: productDetails.gstPct,
         uom: 'Pcs',
       }
-      console.log('✅ Adding finished product:', lineItem)
       onAdd(lineItem)
     } else if (purchaseType === PurchaseType.FABRIC && fabricDetails) {
       const unitPrice = supplierPricing?.unitPrice ?? fabricDetails.costPrice
@@ -964,7 +945,6 @@ export function AddLineItemDialog({
         taxRate: fabricDetails.gstPct,
         uom: fabricDetails.uom,
       }
-      console.log('✅ Adding fabric:', lineItem)
       onAdd(lineItem)
     } else if (purchaseType === PurchaseType.RAW_MATERIAL && rawMaterialDetails) {
       const unitPrice = supplierPricing?.unitPrice ?? rawMaterialDetails.costPrice
@@ -977,7 +957,6 @@ export function AddLineItemDialog({
         taxRate: rawMaterialDetails.gstPct,
         uom: rawMaterialDetails.measurementUnit,
       }
-      console.log('✅ Adding raw material:', lineItem)
       onAdd(lineItem)
     } else if (purchaseType === PurchaseType.PACKAGING && packagingDetails) {
       const unitPrice = supplierPricing?.unitPrice ?? packagingDetails.costPrice
@@ -990,7 +969,6 @@ export function AddLineItemDialog({
         taxRate: packagingDetails.gstPct,
         uom: packagingDetails.measurementUnit,
       }
-      console.log('✅ Adding packaging:', lineItem)
       onAdd(lineItem)
     } else {
       console.error('❌ No matching product type or details missing')

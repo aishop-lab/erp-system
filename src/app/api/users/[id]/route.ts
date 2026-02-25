@@ -31,6 +31,10 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    if (user.tenantId !== currentUser.tenantId) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     return NextResponse.json(user)
   } catch (error) {
     console.error('Error fetching user:', error)
@@ -57,6 +61,12 @@ export async function PUT(
 
     if (!currentUser?.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
+    }
+
+    // Verify target user belongs to same tenant
+    const targetUser = await getUserById(id)
+    if (!targetUser || targetUser.tenantId !== currentUser.tenantId) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -98,6 +108,12 @@ export async function DELETE(
     // Don't allow deleting yourself
     if (id === currentUser.id) {
       return NextResponse.json({ error: 'Cannot deactivate yourself' }, { status: 400 })
+    }
+
+    // Verify target user belongs to same tenant
+    const targetUser = await getUserById(id)
+    if (!targetUser || targetUser.tenantId !== currentUser.tenantId) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Soft delete (deactivate)

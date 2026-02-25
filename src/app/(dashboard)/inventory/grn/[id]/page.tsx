@@ -165,12 +165,12 @@ export default function GRNDetailPage() {
                   {grn.lineItems.map((item: any) => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        <div className="font-mono text-xs">
-                          {item.poLineItem?.productId?.slice(0, 16) || '-'}
+                        <div className="font-medium text-sm">
+                          {item.productDescription || item.poLineItem?.productId?.slice(0, 16) || '-'}
                         </div>
                         {item.poLineItem?.productType && (
                           <Badge variant="outline" className="text-xs mt-1">
-                            {item.poLineItem.productType}
+                            {item.poLineItem.productType.replace(/_/g, ' ')}
                           </Badge>
                         )}
                       </TableCell>

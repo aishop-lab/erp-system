@@ -27,8 +27,6 @@ export async function GET(request: NextRequest) {
     const work = searchParams.get('work')
     const supplierId = searchParams.get('supplierId')
 
-    console.log('Lookup request:', { material, color, design, work })
-
     // Build where clause with proper NULL handling
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereClause: any = {
@@ -41,8 +39,6 @@ export async function GET(request: NextRequest) {
     if (color) whereClause.color = color
     if (design) whereClause.design = design
     if (work) whereClause.work = work
-
-    console.log('Where clause:', JSON.stringify(whereClause, null, 2))
 
     const fabric = await prisma.fabric.findFirst({
       where: whereClause,
@@ -58,8 +54,6 @@ export async function GET(request: NextRequest) {
     })
 
     if (!fabric) {
-      console.log('Fabric not found')
-
       // Find similar fabrics for debugging
       const similar = await prisma.fabric.findMany({
         where: {
@@ -70,12 +64,6 @@ export async function GET(request: NextRequest) {
         },
         take: 3,
       })
-
-      console.log('Similar fabrics:', similar.map(f => ({
-        sku: f.fabricSku,
-        design: f.design,
-        work: f.work,
-      })))
 
       return NextResponse.json({
         error: 'Fabric not found',
@@ -89,8 +77,6 @@ export async function GET(request: NextRequest) {
         })),
       }, { status: 404 })
     }
-
-    console.log('Fabric found:', fabric.fabricSku)
 
     // Check for supplier-specific pricing
     let supplierPricing = null

@@ -13,15 +13,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const { signIn, isLoading } = useAuth()
+  const [isSigningIn, setIsSigningIn] = useState(false)
+  const { signIn } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setIsSigningIn(true)
 
     const result = await signIn(email, password)
     if (result.error) {
       setError(result.error.message)
+      setIsSigningIn(false)
     }
   }
 
@@ -49,7 +52,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isSigningIn}
             />
           </div>
           <div className="space-y-2">
@@ -60,14 +63,14 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isSigningIn}
             />
           </div>
           {error && (
             <div className="text-sm text-destructive">{error}</div>
           )}
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
+          <Button type="submit" className="w-full" disabled={isSigningIn}>
+            {isSigningIn ? (
               <>
                 <LoadingSpinner size="sm" className="mr-2" />
                 Signing in...

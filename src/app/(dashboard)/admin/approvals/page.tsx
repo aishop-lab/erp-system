@@ -1,8 +1,41 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/shared/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
 
 export default function ApprovalsPage() {
+  const [pendingPOs, setPendingPOs] = useState<number | null>(null)
+  const [pendingPayments, setPendingPayments] = useState<number | null>(null)
+
+  useEffect(() => {
+    async function fetchCounts() {
+      try {
+        const [poRes, payRes] = await Promise.all([
+          fetch('/api/admin/approvals/po'),
+          fetch('/api/finance/payments?status=pending_approval'),
+        ])
+
+        if (poRes.ok) {
+          const poData = await poRes.json()
+          setPendingPOs(Array.isArray(poData) ? poData.length : (poData.total ?? 0))
+        }
+
+        if (payRes.ok) {
+          const payData = await payRes.json()
+          setPendingPayments(Array.isArray(payData) ? payData.length : (payData.total ?? 0))
+        }
+      } catch {
+        // Silently fail - show 0 as fallback
+        setPendingPOs(0)
+        setPendingPayments(0)
+      }
+    }
+
+    fetchCounts()
+  }, [])
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -23,7 +56,7 @@ export default function ApprovalsPage() {
               <CardDescription>Review purchase order requests</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">0</p>
+              <p className="text-2xl font-bold">{pendingPOs ?? '...'}</p>
               <p className="text-sm text-muted-foreground">Pending approval</p>
             </CardContent>
           </Card>
@@ -36,7 +69,7 @@ export default function ApprovalsPage() {
               <CardDescription>Review payment requests</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">0</p>
+              <p className="text-2xl font-bold">{pendingPayments ?? '...'}</p>
               <p className="text-sm text-muted-foreground">Pending approval</p>
             </CardContent>
           </Card>
