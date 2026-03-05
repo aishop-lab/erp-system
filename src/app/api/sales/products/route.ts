@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { getProductPerformance } from '@/services/analytics-service'
-import { authenticateRequest } from '@/lib/api-auth'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,9 +11,9 @@ export async function GET(request: NextRequest) {
     const days = parseInt(searchParams.get('days') || '365')
 
     const data = await getProductPerformance(auth.user.tenantId, days)
-    return NextResponse.json(data)
+    return cachedJsonResponse(data, 300)
   } catch (error: any) {
     console.error('Error fetching product performance:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return cachedJsonResponse({ error: error.message }, 0)
   }
 }

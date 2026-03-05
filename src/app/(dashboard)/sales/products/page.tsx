@@ -64,7 +64,17 @@ export default function ProductPerformancePage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20 text-muted-foreground">Loading product analytics...</div>
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Product Performance" description="Top sellers, style & color analysis, size distribution" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1,2,3,4].map(i => (
+            <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse rounded bg-muted" /></CardContent></Card>
+          ))}
+        </div>
+        <Card><CardContent className="pt-6"><div className="h-[300px] animate-pulse rounded bg-muted" /></CardContent></Card>
+      </div>
+    )
   }
 
   if (!data) {

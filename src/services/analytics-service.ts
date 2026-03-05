@@ -86,31 +86,40 @@ export async function getFinanceAnalytics(tenantId: string, days: number = 365):
       GROUP BY sp.status
     `,
 
-    // Monthly P&L
+    // Monthly P&L (two-step: order-level aggregation, then COGS via separate CTE)
     prisma.$queryRaw<{
       month: string; orders: string; revenue: string; est_cogs: string;
       cancelled: string; refunded: string
     }[]>`
-      SELECT
-        TO_CHAR(so."orderedAt", 'YYYY-MM') as month,
-        COUNT(*)::text as orders,
-        COALESCE(SUM(CASE WHEN so.status IN ('delivered','shipped') THEN so."totalAmount"::numeric ELSE 0 END), 0) as revenue,
-        COALESCE(SUM(
-          CASE WHEN so.status IN ('delivered','shipped') THEN
-            COALESCE((
-              SELECT SUM(fp."costAmount"::numeric * soi.quantity::numeric)
-              FROM sales_order_items soi
-              JOIN finished_products fp ON soi."finishedProductId" = fp.id
-              WHERE soi."orderId" = so.id
-            ), 0)
-          ELSE 0 END
-        ), 0) as est_cogs,
-        COUNT(CASE WHEN so.status = 'cancelled' THEN 1 END)::text as cancelled,
-        COUNT(CASE WHEN so.status = 'refunded' THEN 1 END)::text as refunded
-      FROM sales_orders so
-      WHERE so."tenantId" = ${tenantId} ${dateFilter}
-      GROUP BY TO_CHAR(so."orderedAt", 'YYYY-MM')
-      ORDER BY month
+      WITH order_stats AS (
+        SELECT
+          TO_CHAR(so."orderedAt", 'YYYY-MM') as month,
+          COUNT(*)::text as orders,
+          COALESCE(SUM(CASE WHEN so.status IN ('delivered','shipped') THEN so."totalAmount"::numeric ELSE 0 END), 0) as revenue,
+          COUNT(CASE WHEN so.status = 'cancelled' THEN 1 END)::text as cancelled,
+          COUNT(CASE WHEN so.status = 'refunded' THEN 1 END)::text as refunded
+        FROM sales_orders so
+        WHERE so."tenantId" = ${tenantId} ${dateFilter}
+        GROUP BY TO_CHAR(so."orderedAt", 'YYYY-MM')
+      ),
+      cogs_stats AS (
+        SELECT
+          TO_CHAR(so."orderedAt", 'YYYY-MM') as month,
+          COALESCE(SUM(fp."costAmount"::numeric * soi.quantity::numeric), 0) as est_cogs
+        FROM sales_orders so
+        JOIN sales_order_items soi ON soi."orderId" = so.id
+        JOIN finished_products fp ON soi."finishedProductId" = fp.id
+        WHERE so."tenantId" = ${tenantId}
+          AND so.status IN ('delivered','shipped')
+          ${dateFilter}
+        GROUP BY TO_CHAR(so."orderedAt", 'YYYY-MM')
+      )
+      SELECT os.month, os.orders, os.revenue,
+        COALESCE(cs.est_cogs, 0) as est_cogs,
+        os.cancelled, os.refunded
+      FROM order_stats os
+      LEFT JOIN cogs_stats cs ON cs.month = os.month
+      ORDER BY os.month
     `,
   ])
 
@@ -421,7 +430,7 @@ export async function getProductPerformance(tenantId: string, days: number = 365
         AND so.status IN ('delivered', 'shipped')
         ${dateFilter}
       GROUP BY fp.id, fp.title, fp."childSku", fp.color, fp.size, s."styleName"
-      ORDER BY revenue DESC
+      ORDER BY SUM(soi.total::numeric) DESC
       LIMIT 20
     `,
 
@@ -447,7 +456,7 @@ export async function getProductPerformance(tenantId: string, days: number = 365
         AND so.status IN ('delivered', 'shipped')
         ${dateFilter}
       GROUP BY fp.id, fp.title, fp."childSku", fp.color, fp.size, s."styleName"
-      ORDER BY revenue ASC
+      ORDER BY SUM(soi.total::numeric) ASC
       LIMIT 20
     `,
 
@@ -469,7 +478,7 @@ export async function getProductPerformance(tenantId: string, days: number = 365
         AND so.status IN ('delivered', 'shipped')
         ${dateFilter}
       GROUP BY s.id, s."styleName"
-      ORDER BY revenue DESC
+      ORDER BY SUM(soi.total::numeric) DESC
     `,
 
     // By color
@@ -488,7 +497,7 @@ export async function getProductPerformance(tenantId: string, days: number = 365
         AND so.status IN ('delivered', 'shipped')
         ${dateFilter}
       GROUP BY fp.color
-      ORDER BY revenue DESC
+      ORDER BY SUM(soi.total::numeric) DESC
     `,
 
     // By size

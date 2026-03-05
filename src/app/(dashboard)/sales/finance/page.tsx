@@ -61,7 +61,21 @@ export default function SalesFinancePage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20 text-muted-foreground">Loading finance analytics...</div>
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Finance Analytics" description="Revenue, COGS estimates, and P&L overview" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1,2,3,4].map(i => (
+            <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse rounded bg-muted" /></CardContent></Card>
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {[1,2].map(i => (
+            <Card key={i}><CardContent className="pt-6"><div className="h-[250px] animate-pulse rounded bg-muted" /></CardContent></Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   if (!data) {

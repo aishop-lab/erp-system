@@ -61,7 +61,17 @@ export default function AmazonAnalyticsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20 text-muted-foreground">Loading Amazon analytics...</div>
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Amazon Deep Dive" description="Order funnel, cancellations, returns, and fulfillment analysis" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          {[1,2,3,4,5].map(i => (
+            <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse rounded bg-muted" /></CardContent></Card>
+          ))}
+        </div>
+        <Card><CardContent className="pt-6"><div className="h-[220px] animate-pulse rounded bg-muted" /></CardContent></Card>
+      </div>
+    )
   }
 
   if (!data) {
