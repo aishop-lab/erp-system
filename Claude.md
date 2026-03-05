@@ -1,12 +1,12 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-02-15 (Production Module - In-House + Job Work)
+> **Last Updated:** 2026-03-06 (Sales Analytics, Amazon Sync, Product Performance)
 
 ## Overview
 
 Multi-tenant ERP system for managing users, suppliers, products, purchase orders, inventory, production, and finance. All data scoped by `tenantId`.
 
-**Tech Stack:** Next.js 14 (App Router), TypeScript, PostgreSQL (Supabase), Prisma, Supabase Auth, shadcn/ui, Tailwind CSS, Zod, TanStack Table
+**Tech Stack:** Next.js 14 (App Router), TypeScript, PostgreSQL (Supabase), Prisma, Supabase Auth, shadcn/ui, Tailwind CSS, Zod, TanStack Table, Recharts
 
 ---
 
@@ -27,6 +27,8 @@ src/
 │   │   ├── production/job-work/, production/job-work/issue/
 │   │   ├── finance/, finance/reconciliation/, finance/payments/
 │   │   ├── finance/{fulton,mse,sna}/        # Entity-specific payment pages
+│   │   ├── sales/, sales/orders/, sales/analytics/
+│   │   ├── sales/finance/, sales/amazon/, sales/products/  # Analytics pages
 │   │   └── profile/
 │   └── api/
 │       ├── users/, me/, profile/
@@ -43,9 +45,19 @@ src/
 │       │   ├── orders/, orders/[id]/, orders/[id]/complete/
 │       │   ├── job-work/eligible-pos/, job-work/issue-rm/
 │       │   └── available-batches/
-│       └── finance/
-│           ├── reconciliation/[poId]/, [poId]/submit/
-│           └── payments/[id]/, [id]/{approve,execute}/
+│       ├── finance/
+│       │   ├── reconciliation/[poId]/, [poId]/submit/
+│       │   └── payments/[id]/, [id]/{approve,execute}/
+│       ├── sales/
+│       │   ├── orders/, orders/[id]/, dashboard/, platforms/
+│       │   ├── finance/, amazon/, products/    # Analytics APIs
+│       │   └── reconciliation/
+│       ├── cron/
+│       │   ├── sync-orders/                    # Amazon orders (every 4h)
+│       │   ├── sync-inventory/                 # FBA inventory (every 4h)
+│       │   └── sync-shopify/                   # Shopify sync (every 4h)
+│       ├── sync/{amazon,shopify}/              # Manual sync triggers
+│       └── webhooks/shopify/                   # Shopify webhook receiver
 ├── components/
 │   ├── ui/                    # shadcn components
 │   ├── shared/                # page-header, loading-spinner, vendor-selector, empty-state
@@ -57,10 +69,14 @@ src/
 │   └── layout/sidebar.tsx, header.tsx
 ├── lib/
 │   ├── prisma.ts, utils.ts, constants.ts
+│   ├── api-auth.ts           # Shared auth helper (authenticateRequest)
 │   ├── media-upload.ts       # Supabase Storage upload utility
+│   ├── amazon/               # Amazon SP-API (client, orders, inventory)
+│   ├── shopify/              # Shopify GraphQL (client, orders, inventory, webhooks)
 │   └── supabase/{client,server}.ts
 ├── services/                  # Business logic (supplier, user, settings, product-info,
-│                              # grn, inventory, reconciliation, finance, production)
+│                              # grn, inventory, reconciliation, finance, production,
+│                              # sales, analytics, product-reconciliation)
 ├── validators/                # Zod schemas (supplier, purchase-order, reconciliation, payment, production)
 └── hooks/
 
@@ -116,6 +132,19 @@ data/                          # CSV files for migration
 - **MarketplaceSettlement** - salesChannelId, grossAmount, fees, netAmount
 - **ApprovalAuditLog** - approvalType (po_approval, payment_approval), action, userId, reason, referenceId
 
+### Sales & Platforms
+- **SalesPlatform** - Amazon, Shopify, etc. with credentials, sync logs
+- **PlatformCredential** - Encrypted API credentials per platform (client_id, client_secret, refresh_token)
+- **PlatformMapping** - SKU/ASIN → FinishedProduct mapping for order item linking
+- **SalesOrder** - Multi-platform orders with status (pending→confirmed→shipped→delivered→cancelled→returned→refunded), platformMetadata JSON (fulfillment_channel, is_prime), timestamps (orderedAt, shippedAt, deliveredAt, cancelledAt)
+- **SalesOrderItem** - Line items with optional finishedProductId FK for COGS estimation
+- **SalesPayment** - Payment records per order (amount, method, status, paidAt)
+- **SalesRevenue** - Daily revenue aggregation per order (grossRevenue, discount, netRevenue, taxCollected)
+- **SalesWarehouse** - Warehouse-based inventory (separate from batch-based procurement inventory)
+- **WarehouseStock** - SKU-level stock per warehouse
+- **SalesStockMovement** - Warehouse stock movements (purchase, sales, transfer, adjustment)
+- **SyncLog** - Tracks sync operations (status, recordsProcessed/Created/Updated/Failed)
+
 ### Future (Schema Ready)
 - ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
 
@@ -125,10 +154,16 @@ data/                          # CSV files for migration
 
 ### Auth Pattern
 ```typescript
+// Preferred: use api-auth helper (caches user lookups for 30s)
+import { authenticateRequest } from '@/lib/api-auth'
+const auth = await authenticateRequest()
+if (auth.response) return auth.response
+// auth.user has: id, email, name, tenantId, role, isSuperAdmin
+
+// Legacy (still works):
 const supabase = await createClient()
 const { data: { user: authUser } } = await supabase.auth.getUser()
 const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: authUser.id } })
-// Use currentUser.tenantId for all queries
 ```
 
 ### Key Endpoints
@@ -158,6 +193,12 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | Job Work | GET `/api/production/job-work/eligible-pos`, POST `/api/production/job-work/issue-rm` |
 | Available Batches | GET `/api/production/available-batches?productType=&search=` |
 | External Vendors | GET `/api/external-vendors/shivaang` |
+| Sales Orders | GET `/api/sales/orders`, GET `orders/[id]`, GET `/api/sales/dashboard` |
+| Sales Platforms | GET `/api/sales/platforms` |
+| Sales Analytics | GET `/api/sales/finance?days=365`, GET `/api/sales/amazon?days=90`, GET `/api/sales/products?days=365` |
+| Sales Reconciliation | GET `/api/sales/reconciliation` |
+| Sync (Manual) | POST `/api/sync/amazon`, POST `/api/sync/shopify` |
+| Cron | GET `/api/cron/sync-orders`, GET `/api/cron/sync-inventory`, GET `/api/cron/sync-shopify` |
 
 ---
 
@@ -321,9 +362,32 @@ const { id } = await params
 - **Status Flow**: planned → materials_issued → in_progress → completed
 - **Number Formats**: `PRD-YYMM-NNNN` (in-house), `JWK-YYMM-NNNN` (job work)
 
+### Slice 8: Sales & Analytics ✅
+- **Sales Module**: 5 API endpoints, 4 UI pages (orders list, order detail, analytics dashboard, platforms)
+- **Amazon SP-API Integration**: `src/lib/amazon/` - client (SellingPartner with rate-limit retry), orders sync (status mapping, metadata extraction), FBA inventory sync
+- **Shopify Integration**: `src/lib/shopify/` - GraphQL client (cost-based rate limiting), orders, inventory, webhooks (HMAC verification)
+- **Cron Jobs** (Vercel Cron, every 4 hours via `vercel.json`):
+  - `/api/cron/sync-orders` - Amazon orders (last 3 days), auth via `CRON_SECRET`
+  - `/api/cron/sync-inventory` - FBA inventory sync
+  - `/api/cron/sync-shopify` - Shopify orders + inventory
+- **Manual Sync**: POST `/api/sync/amazon`, POST `/api/sync/shopify`
+- **Webhooks**: POST `/api/webhooks/shopify` (HMAC-verified)
+- **Taxonomy Import**: `scripts/import-taxonomy.ts` - maps Amazon SKUs to products via abbreviation decoding
+- **Product Reconciliation**: `src/services/product-reconciliation-service.ts` - links order items to finished products
+
+### Slice 8B: Comprehensive Sales Analytics ✅
+- **Finance Analytics** (`/sales/finance`): Revenue by status (delivered/shipped/cancelled/refunded), estimated COGS via `costAmount × quantity` (97% linked, 190 INR fallback for 3% unlinked), gross margin %, revenue/order, payment collection pie chart, monthly P&L table, revenue vs COGS area chart, 3 "coming soon" cards (platform fees, expenses, settlements)
+- **Amazon Deep Dive** (`/sales/amazon`): Order funnel with drop-off % (total→confirmed→shipped→delivered), cancellation trend line chart, return/refund summary, fulfillment split (AFN/MFN), delivery timeline (avg days to ship/deliver), monthly trend table
+- **Product Performance** (`/sales/products`): 5 tabs (Top Sellers, By Style, By Color, By Size, Slow Movers), horizontal bar charts for style revenue, pie chart for color distribution, size curve bar chart, custom size sort order (32-50, XS-5XL)
+- **Service**: `src/services/analytics-service.ts` - 3 functions using `prisma.$queryRaw` with `Prisma.sql` for safe parameterization, `Promise.all()` for parallel queries
+- **Charts**: Recharts (ResponsiveContainer, BarChart, LineChart, AreaChart, PieChart)
+- **Time Filters**: 7d, 30d, 90d, 365d, All time (days=0 removes date filter)
+- **Data Reality**: 4,526 orders (3.22M INR), 203 products, 3,553 delivered, 97% items linked
+
 ### Not Yet Implemented
 - Slice 5: GRN & Inventory - outflow UI, adjustments UI
 - Slice 7: Finance - Settlements, Invoices, Credits (stub pages exist)
+- Sales: Platform Fees, Expense Tracking, Marketplace Settlements (schema ready, tables empty)
 - Channel-specific UIs (Amazon, Myntra fields)
 - Bulk operations, CSV import for products
 
@@ -336,10 +400,17 @@ DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
 NEXT_PUBLIC_SUPABASE_URL=https://...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Bearer <secret>)
 ```
 
 **Manual Setup:**
 - Create Supabase Storage bucket `product-media` with public read access
+- Amazon SP-API credentials stored in `platform_credentials` table (client_id, client_secret, refresh_token)
+
+**Vercel Cron (`vercel.json`):**
+- `sync-orders`: `0 */4 * * *` (every 4h) - Amazon orders
+- `sync-inventory`: `30 */4 * * *` (every 4h at :30) - FBA inventory
+- `sync-shopify`: `15 */4 * * *` (every 4h at :15) - Shopify
 
 **Build Notes:**
 - `scripts/` excluded from TypeScript compilation in `tsconfig.json`
@@ -348,6 +419,19 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ---
 
 ## Changelog
+
+### 2026-03-06
+- **Sales Module & Comprehensive Analytics**
+- Schema: Added 11 sales models (SalesPlatform, SalesOrder, SalesOrderItem, SalesPayment, SalesRevenue, PlatformCredential, PlatformMapping, SalesWarehouse, WarehouseStock, SalesStockMovement, SyncLog)
+- Amazon SP-API: Full integration with SellingPartner SDK (EU region, India marketplace A21TJRUUN4KGV), rate-limit retry with exponential backoff, order sync with status mapping, FBA inventory sync
+- Shopify: GraphQL Admin API (2024-10) with cost-based rate limiting, orders/inventory sync, HMAC-verified webhooks
+- Cron: 3 Vercel Cron jobs every 4 hours (sync-orders, sync-inventory, sync-shopify), CRON_SECRET auth
+- Sales service: getSalesOrders (paginated), getSalesOrderById, getSalesDashboard, getSalesPlatforms
+- Analytics service: getFinanceAnalytics (revenue/COGS/margin/P&L), getAmazonAnalytics (funnel/cancellation/returns/fulfillment), getProductPerformance (top sellers/style/color/size analysis)
+- 7 API routes: `/api/sales/{orders,dashboard,platforms,finance,amazon,products,reconciliation}`
+- 7 UI pages: orders list, order detail, analytics dashboard, platforms, finance analytics, Amazon deep dive, product performance
+- Data migration: 10,369 records from source, 4,526 orders, 203 products, 97% items linked via taxonomy mapping
+- Navigation: Added Finance, Amazon, Products under Sales menu
 
 ### 2026-02-15
 - **Production Module - In-House + Job Work**
