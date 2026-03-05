@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
 // GET /api/product-info/finished/lookup - Lookup a specific product by style, color, size
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const styleId = searchParams.get('styleId')
@@ -36,7 +24,7 @@ export async function GET(request: NextRequest) {
     // Find the specific product
     const product = await prisma.finishedProduct.findFirst({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         styleId: styleId,
         color: color,
         size: size,
@@ -92,7 +80,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return cachedJsonResponse({
       product: {
         id: product.id,
         childSku: product.childSku,
@@ -106,10 +94,10 @@ export async function GET(request: NextRequest) {
         fabric: product.fabric,
       },
       supplierPricing,
-    })
+    }, 30)
   } catch (error) {
     console.error('Error looking up product:', error)
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to lookup product' },
       { status: 500 }
     )

@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 import { getPOsForReconciliation } from '@/services/reconciliation-service'
 
 // GET /api/finance/reconciliation - List POs pending reconciliation
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const params = {
@@ -28,7 +15,7 @@ export async function GET(request: NextRequest) {
       pageSize: parseInt(searchParams.get('pageSize') || '20'),
     }
 
-    const result = await getPOsForReconciliation(currentUser.tenantId, params)
+    const result = await getPOsForReconciliation(auth.user.tenantId, params)
 
     return NextResponse.json(result)
   } catch (error) {

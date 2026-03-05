@@ -15,6 +15,7 @@ import {
   Building2,
   Settings,
   Shield,
+  TrendingUp,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react'
@@ -38,6 +39,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Building2,
   Settings,
   Shield,
+  TrendingUp,
 }
 
 interface SidebarProps {

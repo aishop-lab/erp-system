@@ -1,24 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
 // GET /api/product-info/finished/styles-by-category?category=X - Get styles for a category
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
@@ -30,10 +19,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get styles that have active finished products in the specified category
     const styles = await prisma.style.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         status: 'active',
         category: category,
         finishedProducts: {
@@ -50,10 +38,10 @@ export async function GET(request: NextRequest) {
       orderBy: { styleName: 'asc' },
     })
 
-    return NextResponse.json({ styles })
+    return cachedJsonResponse({ styles }, 60)
   } catch (error) {
     console.error('Error fetching styles:', error)
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to fetch styles' },
       { status: 500 }
     )

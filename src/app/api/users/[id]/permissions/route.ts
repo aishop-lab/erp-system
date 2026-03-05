@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserPermissions } from '@/services/user-service'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -9,29 +8,15 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Get the current user from our database using supabaseUserId
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-      include: { permissions: true },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     // Users can only fetch their own permissions unless they are super admin
-    if (id !== currentUser.id && !currentUser.isSuperAdmin) {
+    if (id !== auth.user.id && !auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const permissions = await getUserPermissions(id === currentUser.id ? currentUser.id : id)
+    const permissions = await getUserPermissions(id === auth.user.id ? auth.user.id : id)
 
     return NextResponse.json({
       permissions: permissions.map(p => ({

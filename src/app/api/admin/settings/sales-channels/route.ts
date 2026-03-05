@@ -1,27 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SettingsService } from '@/services/settings-service'
 import { createSalesChannelSchema } from '@/validators/settings'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
-    const channels = await SettingsService.getAllSalesChannels(currentUser.tenantId)
+    const channels = await SettingsService.getAllSalesChannels(auth.user.tenantId)
     return NextResponse.json(channels)
   } catch (error) {
     console.error('Error fetching sales channels:', error)
@@ -34,25 +25,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     const body = await request.json()
     const validatedData = createSalesChannelSchema.parse(body)
 
-    const channel = await SettingsService.createSalesChannel(currentUser.tenantId, validatedData)
+    const channel = await SettingsService.createSalesChannel(auth.user.tenantId, validatedData)
     return NextResponse.json(channel, { status: 201 })
   } catch (error: any) {
     console.error('Error creating sales channel:', error)

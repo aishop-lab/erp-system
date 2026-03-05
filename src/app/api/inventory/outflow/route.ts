@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { createOutflowSchema } from '@/validators/inventory'
 import { getOutflows, createOutflow } from '@/services/outflow-service'
 import { z } from 'zod'
@@ -8,20 +7,8 @@ import { z } from 'zod'
 // GET /api/inventory/outflow
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const params = {
@@ -32,8 +19,8 @@ export async function GET(request: NextRequest) {
       pageSize: parseInt(searchParams.get('pageSize') || '20'),
     }
 
-    const result = await getOutflows(currentUser.tenantId, params)
-    return NextResponse.json(result)
+    const result = await getOutflows(auth.user.tenantId, params)
+    return cachedJsonResponse(result, 30)
   } catch (error) {
     console.error('Error fetching outflows:', error)
     return NextResponse.json({ error: 'Failed to fetch outflows' }, { status: 500 })
@@ -43,28 +30,16 @@ export async function GET(request: NextRequest) {
 // POST /api/inventory/outflow
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = createOutflowSchema.parse(body)
 
     const outflow = await createOutflow(
-      currentUser.tenantId,
-      currentUser.id,
-      currentUser.name,
+      auth.user.tenantId,
+      auth.user.id,
+      auth.user.name,
       validatedData
     )
 

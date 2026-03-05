@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 import { getPaymentById } from '@/services/finance-service'
 
 // GET /api/finance/payments/[id] - Get payment detail
@@ -10,22 +9,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const payment = await getPaymentById(id, currentUser.tenantId)
+    const payment = await getPaymentById(id, auth.user.tenantId)
 
     if (!payment) {
       return NextResponse.json(

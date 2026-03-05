@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { RawMaterialService } from '@/services/product-info-service'
 import { updateRawMaterialSchema } from '@/validators/product-info'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -10,22 +9,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const rawMaterial = await RawMaterialService.getById(id, currentUser.tenantId)
+    const rawMaterial = await RawMaterialService.getById(id, auth.user.tenantId)
     if (!rawMaterial) {
       return NextResponse.json({ error: 'Raw material not found' }, { status: 404 })
     }
@@ -46,25 +33,13 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = updateRawMaterialSchema.parse(body)
 
-    const rawMaterial = await RawMaterialService.update(id, currentUser.tenantId, validatedData)
+    const rawMaterial = await RawMaterialService.update(id, auth.user.tenantId, validatedData)
     return NextResponse.json({ rawMaterial })
   } catch (error: any) {
     console.error('Error updating raw material:', error)
@@ -81,22 +56,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    await RawMaterialService.deactivate(id, currentUser.tenantId)
+    await RawMaterialService.deactivate(id, auth.user.tenantId)
     return NextResponse.json({ message: 'Raw material deactivated' })
   } catch (error: any) {
     console.error('Error deactivating raw material:', error)

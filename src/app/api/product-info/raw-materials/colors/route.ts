@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/product-info/raw-materials/colors - Get colors for a given rmType
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const rmType = searchParams.get('rmType')
@@ -33,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Get unique colors for the given raw material type
     const rawMaterials = await prisma.rawMaterial.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         status: 'active',
         rmType: rmType,
       },
@@ -56,7 +44,7 @@ export async function GET(request: NextRequest) {
       colors.unshift('None') // Add at beginning
     }
 
-    return NextResponse.json({ colors })
+    return cachedJsonResponse({ colors }, 60)
   } catch (error) {
     console.error('Error fetching raw material colors:', error)
     return NextResponse.json(

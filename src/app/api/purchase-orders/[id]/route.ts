@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { getPurchaseOrderById } from '@/services/po-service'
 import { createPurchaseOrderSchema } from '@/validators/purchase-order'
 import { POStatus } from '@prisma/client'
+import { authenticateRequest } from '@/lib/api-auth'
 import { z } from 'zod'
 
 // GET /api/purchase-orders/[id] - Get a single purchase order
@@ -13,22 +13,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const purchaseOrder = await getPurchaseOrderById(id, currentUser.tenantId)
+    const purchaseOrder = await getPurchaseOrderById(id, auth.user.tenantId)
 
     if (!purchaseOrder) {
       return NextResponse.json(
@@ -54,24 +42,12 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     // Check if PO exists and is draft
     const existingPO = await prisma.purchaseOrder.findFirst({
-      where: { id, tenantId: currentUser.tenantId },
+      where: { id, tenantId: auth.user.tenantId },
     })
 
     if (!existingPO) {
@@ -200,24 +176,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     // Check if PO exists and is draft
     const existingPO = await prisma.purchaseOrder.findFirst({
-      where: { id, tenantId: currentUser.tenantId },
+      where: { id, tenantId: auth.user.tenantId },
     })
 
     if (!existingPO) {

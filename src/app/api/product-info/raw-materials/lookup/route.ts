@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 
 // GET /api/product-info/raw-materials/lookup - Get raw material details by rmType + color
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const rmType = searchParams.get('rmType')
@@ -35,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     // Build where clause with AND conditions
     const andConditions: Prisma.RawMaterialWhereInput[] = [
-      { tenantId: currentUser.tenantId },
+      { tenantId: auth.user.tenantId },
       { status: 'active' },
       { rmType: rmType },
     ]
@@ -84,7 +72,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return cachedJsonResponse({
       rawMaterial: {
         id: rawMaterial.id,
         rmSku: rawMaterial.rmSku,
@@ -98,7 +86,7 @@ export async function GET(request: NextRequest) {
         supplier: rawMaterial.supplier,
       },
       supplierPricing,
-    })
+    }, 60)
   } catch (error) {
     console.error('Error fetching raw material details:', error)
     return NextResponse.json(

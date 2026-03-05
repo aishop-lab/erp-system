@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { createProductionSchema } from '@/validators/production'
 import { getProductions, createProduction } from '@/services/production-service'
 import { ProductionType, ProductionStatus } from '@prisma/client'
@@ -9,20 +8,8 @@ import { z } from 'zod'
 // GET /api/production/orders - List production orders
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const params = {
@@ -33,8 +20,8 @@ export async function GET(request: NextRequest) {
       pageSize: parseInt(searchParams.get('pageSize') || '20'),
     }
 
-    const result = await getProductions(currentUser.tenantId, params)
-    return NextResponse.json(result)
+    const result = await getProductions(auth.user.tenantId, params)
+    return cachedJsonResponse(result, 30)
   } catch (error) {
     console.error('Error fetching production orders:', error)
     return NextResponse.json(
@@ -47,27 +34,15 @@ export async function GET(request: NextRequest) {
 // POST /api/production/orders - Create production order
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = createProductionSchema.parse(body)
 
     const production = await createProduction(
-      currentUser.tenantId,
-      currentUser.id,
+      auth.user.tenantId,
+      auth.user.id,
       validatedData
     )
 

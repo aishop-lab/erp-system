@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 import { rmIssuanceSchema } from '@/validators/production'
 import { issueRawMaterials } from '@/services/production-service'
 import { z } from 'zod'
@@ -8,27 +7,15 @@ import { z } from 'zod'
 // POST /api/production/job-work/issue-rm
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = rmIssuanceSchema.parse(body)
 
     const issuance = await issueRawMaterials(
-      currentUser.tenantId,
-      currentUser.id,
+      auth.user.tenantId,
+      auth.user.id,
       validatedData
     )
 

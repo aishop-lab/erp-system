@@ -1,72 +1,91 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { AuthUser, Session } from '@/types'
+import { useAuthStore } from '@/stores/auth-store'
+import type { AuthUser } from '@/types'
+
+// Module-level singleton to prevent duplicate fetches across hook instances
+let fetchPromise: Promise<void> | null = null
+let lastFetchTime = 0
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 export function useAuth() {
-  const [session, setSession] = useState<Session>({
-    user: null,
-    isLoading: true,
-    error: null,
-  })
+  const { user, setUser, reset } = useAuthStore()
   const router = useRouter()
   const supabase = createClient()
+  const isLoadingRef = useRef(!user)
 
   const fetchUserFromDatabase = useCallback(async () => {
-    try {
-      const response = await fetch('/api/me')
-      if (response.ok) {
-        const userData = await response.json()
-        const authUser: AuthUser = {
-          id: userData.id,
-          email: userData.email,
-          name: userData.name,
-          tenantId: userData.tenantId,
-          role: userData.role,
-          isSuperAdmin: userData.isSuperAdmin,
-          permissions: userData.permissions,
-        }
-        setSession({ user: authUser, isLoading: false, error: null })
-      } else {
-        setSession({ user: null, isLoading: false, error: null })
-      }
-    } catch (error) {
-      console.error('Failed to fetch user from database:', error)
-      setSession({ user: null, isLoading: false, error: error as Error })
+    const now = Date.now()
+    // Skip if recently fetched and we have a user
+    if (user && now - lastFetchTime < CACHE_TTL) return
+
+    // Deduplicate concurrent calls
+    if (fetchPromise) {
+      await fetchPromise
+      return
     }
-  }, [])
 
-  useEffect(() => {
-    const getUser = async () => {
+    fetchPromise = (async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-
-        if (error) {
-          setSession({ user: null, isLoading: false, error })
-          return
-        }
-
-        if (user) {
-          // Fetch user data from our database
-          await fetchUserFromDatabase()
+        const response = await fetch('/api/me')
+        if (response.ok) {
+          const userData = await response.json()
+          const authUser: AuthUser = {
+            id: userData.id,
+            email: userData.email,
+            name: userData.name,
+            tenantId: userData.tenantId,
+            role: userData.role,
+            isSuperAdmin: userData.isSuperAdmin,
+            permissions: userData.permissions,
+          }
+          setUser(authUser)
+          lastFetchTime = Date.now()
         } else {
-          setSession({ user: null, isLoading: false, error: null })
+          setUser(null)
         }
       } catch (error) {
-        setSession({ user: null, isLoading: false, error: error as Error })
+        console.error('Failed to fetch user from database:', error)
+        setUser(null)
       }
+    })()
+
+    try {
+      await fetchPromise
+    } finally {
+      fetchPromise = null
+    }
+  }, [user, setUser])
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        // Use getSession() — reads from local JWT cookie, no network call
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (session?.user) {
+          await fetchUserFromDatabase()
+        } else {
+          setUser(null)
+        }
+      } catch {
+        setUser(null)
+      }
+      isLoadingRef.current = false
     }
 
-    getUser()
+    initAuth()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        // Fetch user data from our database
+        // Invalidate cache on fresh sign-in
+        lastFetchTime = 0
         await fetchUserFromDatabase()
       } else if (event === 'SIGNED_OUT') {
-        setSession({ user: null, isLoading: false, error: null })
+        reset()
         router.push('/login')
       }
     })
@@ -74,18 +93,15 @@ export function useAuth() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [router, supabase.auth, fetchUserFromDatabase])
+  }, [router, supabase.auth, fetchUserFromDatabase, setUser, reset])
 
   const signIn = async (email: string, password: string) => {
-    setSession((prev) => ({ ...prev, isLoading: true, error: null }))
-
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (error) {
-      setSession((prev) => ({ ...prev, isLoading: false, error }))
       return { error }
     }
 
@@ -94,15 +110,15 @@ export function useAuth() {
   }
 
   const signOut = async () => {
-    setSession((prev) => ({ ...prev, isLoading: true }))
     await supabase.auth.signOut()
+    reset()
     router.push('/login')
   }
 
   return {
-    user: session.user,
-    isLoading: session.isLoading,
-    error: session.error,
+    user,
+    isLoading: !user && isLoadingRef.current,
+    error: null,
     signIn,
     signOut,
   }

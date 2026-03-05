@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
 // GET /api/product-info/finished/colors?styleId=X - Get colors for a style
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const styleId = searchParams.get('styleId')
@@ -30,10 +18,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get unique colors for active finished products with the specified style
     const products = await prisma.finishedProduct.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         styleId: styleId,
         status: 'active',
       },
@@ -48,10 +35,10 @@ export async function GET(request: NextRequest) {
       .filter((c): c is string => c !== null && c !== '')
       .sort()
 
-    return NextResponse.json({ colors })
+    return cachedJsonResponse({ colors }, 60)
   } catch (error) {
     console.error('Error fetching colors:', error)
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to fetch colors' },
       { status: 500 }
     )

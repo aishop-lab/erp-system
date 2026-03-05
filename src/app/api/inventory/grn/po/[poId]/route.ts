@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { getPOForGRN } from '@/services/grn-service'
 
 // GET /api/inventory/grn/po/[poId] - Get PO details for GRN creation
@@ -10,22 +9,10 @@ export async function GET(
 ) {
   try {
     const { poId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const poData = await getPOForGRN(poId, currentUser.tenantId)
+    const poData = await getPOForGRN(poId, auth.user.tenantId)
 
     if (!poData) {
       return NextResponse.json(
@@ -34,7 +21,7 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(poData)
+    return cachedJsonResponse(poData, 30)
   } catch (error) {
     console.error('Error fetching PO for GRN:', error)
     return NextResponse.json(

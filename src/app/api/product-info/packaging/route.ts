@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PackagingService } from '@/services/product-info-service'
 import { createPackagingSchema } from '@/validators/product-info'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const filters = {
@@ -27,7 +14,7 @@ export async function GET(request: NextRequest) {
       search: searchParams.get('search') || undefined,
     }
 
-    const packaging = await PackagingService.getAll(currentUser.tenantId, filters)
+    const packaging = await PackagingService.getAll(auth.user.tenantId, filters)
     return NextResponse.json({ packaging })
   } catch (error) {
     console.error('Error fetching packaging:', error)
@@ -40,25 +27,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = createPackagingSchema.parse(body)
 
-    const packaging = await PackagingService.create(currentUser.tenantId, validatedData)
+    const packaging = await PackagingService.create(auth.user.tenantId, validatedData)
     return NextResponse.json({ packaging }, { status: 201 })
   } catch (error: any) {
     console.error('Error creating packaging:', error)

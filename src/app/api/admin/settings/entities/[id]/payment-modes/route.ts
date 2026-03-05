@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SettingsService } from '@/services/settings-service'
 import { createPaymentModeSchema } from '@/validators/settings'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -10,22 +9,14 @@ export async function GET(
 ) {
   try {
     const { id: entityId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
-    const modes = await SettingsService.getPaymentModesByEntity(entityId, currentUser.tenantId)
+    const modes = await SettingsService.getPaymentModesByEntity(entityId, auth.user.tenantId)
     return NextResponse.json(modes)
   } catch (error: any) {
     console.error('Error fetching payment modes:', error)
@@ -42,25 +33,17 @@ export async function POST(
 ) {
   try {
     const { id: entityId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     const body = await request.json()
     const validatedData = createPaymentModeSchema.parse(body)
 
-    const mode = await SettingsService.createPaymentMode(entityId, currentUser.tenantId, validatedData)
+    const mode = await SettingsService.createPaymentMode(entityId, auth.user.tenantId, validatedData)
     return NextResponse.json(mode, { status: 201 })
   } catch (error: any) {
     console.error('Error creating payment mode:', error)

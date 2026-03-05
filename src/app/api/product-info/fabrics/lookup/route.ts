@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/product-info/fabrics/lookup - Get fabric details by material + color + design + work
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const material = searchParams.get('material')
@@ -30,7 +18,7 @@ export async function GET(request: NextRequest) {
     // Build where clause with proper NULL handling
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereClause: any = {
-      tenantId: currentUser.tenantId,
+      tenantId: auth.user.tenantId,
       status: 'active',
     }
 
@@ -57,7 +45,7 @@ export async function GET(request: NextRequest) {
       // Find similar fabrics for debugging
       const similar = await prisma.fabric.findMany({
         where: {
-          tenantId: currentUser.tenantId,
+          tenantId: auth.user.tenantId,
           status: 'active',
           material: material || undefined,
           color: color || undefined,
@@ -97,7 +85,7 @@ export async function GET(request: NextRequest) {
       fabric.work,
     ].filter(Boolean).join(' - ')
 
-    return NextResponse.json({
+    return cachedJsonResponse({
       fabric: {
         id: fabric.id,
         fabricSku: fabric.fabricSku,
@@ -113,7 +101,7 @@ export async function GET(request: NextRequest) {
         supplier: fabric.supplier,
       },
       supplierPricing,
-    })
+    }, 60)
   } catch (error) {
     console.error('Fabric lookup error:', error)
     return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 
 interface ProductSearchResult {
   id: string
@@ -15,20 +15,8 @@ interface ProductSearchResult {
 // GET /api/product-info/search - Search products across all libraries
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') // finished, fabric, raw_material, packaging
@@ -48,7 +36,7 @@ export async function GET(request: NextRequest) {
       case 'finished':
         const finishedProducts = await prisma.finishedProduct.findMany({
           where: {
-            tenantId: currentUser.tenantId,
+            tenantId: auth.user.tenantId,
             status: 'active',
             OR: query ? [
               { childSku: { contains: query, mode: 'insensitive' } },
@@ -83,7 +71,7 @@ export async function GET(request: NextRequest) {
       case 'fabric':
         const fabrics = await prisma.fabric.findMany({
           where: {
-            tenantId: currentUser.tenantId,
+            tenantId: auth.user.tenantId,
             status: 'active',
             OR: query ? [
               { fabricSku: { contains: query, mode: 'insensitive' } },
@@ -118,7 +106,7 @@ export async function GET(request: NextRequest) {
       case 'raw_material':
         const rawMaterials = await prisma.rawMaterial.findMany({
           where: {
-            tenantId: currentUser.tenantId,
+            tenantId: auth.user.tenantId,
             status: 'active',
             OR: query ? [
               { rmSku: { contains: query, mode: 'insensitive' } },
@@ -153,7 +141,7 @@ export async function GET(request: NextRequest) {
       case 'packaging':
         const packagingItems = await prisma.packaging.findMany({
           where: {
-            tenantId: currentUser.tenantId,
+            tenantId: auth.user.tenantId,
             status: 'active',
             OR: query ? [
               { pkgSku: { contains: query, mode: 'insensitive' } },

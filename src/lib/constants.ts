@@ -8,6 +8,7 @@ export const MODULES = {
   INVENTORY_MANAGEMENT: 'inventory_management',
   PRODUCTION: 'production',
   FINANCE: 'finance',
+  SALES: 'sales',
   EXTERNAL_VENDORS: 'external_vendors',
   ADMIN_APPROVALS: 'admin_approvals',
 } as const
@@ -70,6 +71,11 @@ export const MODULE_CONFIG = [
     subModules: [
       { key: SUB_MODULES.FINANCE.FULTON, label: 'Fulton' },
     ]
+  },
+  {
+    module: MODULES.SALES,
+    label: 'Sales',
+    subModules: null
   },
   {
     module: MODULES.EXTERNAL_VENDORS,
@@ -246,6 +252,20 @@ export const NAVIGATION: NavItem[] = [
     ],
   },
   {
+    title: 'Sales',
+    href: '/sales',
+    icon: 'TrendingUp',
+    module: MODULES.SALES,
+    children: [
+      { title: 'Orders', href: '/sales/orders' },
+      { title: 'Analytics', href: '/sales/analytics' },
+      { title: 'Finance', href: '/sales/finance' },
+      { title: 'Amazon', href: '/sales/amazon' },
+      { title: 'Products', href: '/sales/products' },
+      { title: 'Platforms', href: '/sales/platforms' },
+    ],
+  },
+  {
     title: 'External Vendors',
     href: '/external-vendors',
     icon: 'Building2',
@@ -267,6 +287,17 @@ export const NAVIGATION: NavItem[] = [
     ],
   },
 ]
+
+export const SALES_ORDER_STATUS_MAP: StatusMap = {
+  pending: { label: 'Pending', variant: 'secondary' },
+  confirmed: { label: 'Confirmed', variant: 'default' },
+  processing: { label: 'Processing', variant: 'warning' },
+  shipped: { label: 'Shipped', variant: 'default' },
+  delivered: { label: 'Delivered', variant: 'success' },
+  cancelled: { label: 'Cancelled', variant: 'destructive' },
+  returned: { label: 'Returned', variant: 'destructive' },
+  refunded: { label: 'Refunded', variant: 'warning' },
+}
 
 export const DEFAULT_PAGE_SIZE = 10
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupplierService } from '@/services/supplier-service'
 import { uploadPricingSchema, csvPricingRowSchema } from '@/validators/supplier'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 import { z } from 'zod'
 
 export async function GET(
@@ -11,22 +10,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const pricing = await SupplierService.getPricing(id, currentUser.tenantId)
+    const pricing = await SupplierService.getPricing(id, auth.user.tenantId)
     return NextResponse.json(pricing)
   } catch (error: any) {
     console.error('Error fetching pricing:', error)
@@ -43,20 +30,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
 
@@ -69,7 +44,7 @@ export async function POST(
       const { results, errors } = await SupplierService.uploadPricingFromCsv(
         id,
         validatedData,
-        currentUser.tenantId
+        auth.user.tenantId
       )
 
       return NextResponse.json({
@@ -84,7 +59,7 @@ export async function POST(
       const results = await SupplierService.uploadPricingCatalog(
         id,
         validatedData.pricing,
-        currentUser.tenantId
+        auth.user.tenantId
       )
 
       return NextResponse.json({

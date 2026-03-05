@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
 // GET /api/product-info/finished/sizes?styleId=X&color=Y - Get sizes for a style and color
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const styleId = searchParams.get('styleId')
@@ -31,10 +19,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get unique sizes for active finished products with the specified style and color
     const products = await prisma.finishedProduct.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         styleId: styleId,
         color: color,
         status: 'active',
@@ -45,25 +32,22 @@ export async function GET(request: NextRequest) {
       distinct: ['size'],
     })
 
-    // Sort sizes in a logical order (numeric first, then alphabetic)
     const sizes = products
       .map(p => p.size)
       .filter((s): s is string => s !== null && s !== '')
       .sort((a, b) => {
         const numA = parseInt(a)
         const numB = parseInt(b)
-        if (!isNaN(numA) && !isNaN(numB)) {
-          return numA - numB
-        }
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB
         if (!isNaN(numA)) return -1
         if (!isNaN(numB)) return 1
         return a.localeCompare(b)
       })
 
-    return NextResponse.json({ sizes })
+    return cachedJsonResponse({ sizes }, 60)
   } catch (error) {
     console.error('Error fetching sizes:', error)
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to fetch sizes' },
       { status: 500 }
     )

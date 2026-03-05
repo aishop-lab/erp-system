@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupplierService } from '@/services/supplier-service'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const purchaseType = searchParams.get('purchaseType')
@@ -31,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const suppliers = await SupplierService.getSuppliersByPurchaseType(
-      currentUser.tenantId,
+      auth.user.tenantId,
       purchaseType
     )
 

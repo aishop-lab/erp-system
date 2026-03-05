@@ -51,6 +51,10 @@ export async function GET(request: NextRequest) {
         subModule: p.subModule,
         permissionLevel: p.permissionLevel,
       })),
+    }, {
+      headers: {
+        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+      },
     })
   } catch (error) {
     console.error('Error fetching current user:', error)

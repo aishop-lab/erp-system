@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 
 // GET /api/product-info/finished/[id]/media/[mediaId] - Get single media
 export async function GET(
@@ -9,26 +10,14 @@ export async function GET(
 ) {
   try {
     const { id, mediaId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const media = await prisma.mediaFile.findFirst({
       where: {
         id: mediaId,
         entityId: id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
     })
 
@@ -53,27 +42,15 @@ export async function PATCH(
 ) {
   try {
     const { id, mediaId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     // Verify media exists
     const existingMedia = await prisma.mediaFile.findFirst({
       where: {
         id: mediaId,
         entityId: id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
     })
 
@@ -90,7 +67,7 @@ export async function PATCH(
         where: {
           entityType: 'finished_product',
           entityId: id,
-          tenantId: currentUser.tenantId,
+          tenantId: auth.user.tenantId,
           isPrimary: true,
         },
         data: {
@@ -127,27 +104,15 @@ export async function DELETE(
 ) {
   try {
     const { id, mediaId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     // Get media file
     const media = await prisma.mediaFile.findFirst({
       where: {
         id: mediaId,
         entityId: id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
     })
 
@@ -156,6 +121,7 @@ export async function DELETE(
     }
 
     // Delete from Supabase storage
+    const supabase = await createClient()
     const { error: storageError } = await supabase.storage
       .from('product-media')
       .remove([media.filePath])

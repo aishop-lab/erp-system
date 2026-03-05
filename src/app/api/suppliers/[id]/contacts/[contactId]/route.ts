@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupplierService } from '@/services/supplier-service'
 import { contactSchema } from '@/validators/supplier'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function PUT(
   request: NextRequest,
@@ -10,20 +9,8 @@ export async function PUT(
 ) {
   try {
     const { contactId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = contactSchema.parse(body)
@@ -31,7 +18,7 @@ export async function PUT(
     const contact = await SupplierService.updateContact(
       contactId,
       validatedData,
-      currentUser.tenantId
+      auth.user.tenantId
     )
 
     return NextResponse.json(contact)
@@ -56,22 +43,10 @@ export async function DELETE(
 ) {
   try {
     const { contactId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    await SupplierService.deleteContact(contactId, currentUser.tenantId)
+    await SupplierService.deleteContact(contactId, auth.user.tenantId)
     return NextResponse.json({ message: 'Contact deleted' })
   } catch (error: any) {
     console.error('Error deleting contact:', error)

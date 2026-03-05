@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/product-info/packaging/channels - Get channels for a given pkgType
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const pkgType = searchParams.get('pkgType')
@@ -33,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Get unique channels for the given packaging type
     const packagingItems = await prisma.packaging.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         status: 'active',
         pkgType: pkgType,
       },
@@ -56,7 +44,7 @@ export async function GET(request: NextRequest) {
       channels.unshift('None') // Add at beginning
     }
 
-    return NextResponse.json({ channels })
+    return cachedJsonResponse({ channels }, 60)
   } catch (error) {
     console.error('Error fetching packaging channels:', error)
     return NextResponse.json(

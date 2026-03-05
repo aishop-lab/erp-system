@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/inventory/stock-overview
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const productType = searchParams.get('productType') || undefined
@@ -27,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const batches = await prisma.inventoryBatch.findMany({
       where: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         status: status,
         ...(productType && { productType }),
         ...(search && {
@@ -93,10 +81,10 @@ export async function GET(request: NextRequest) {
       outOfStock: stockOverview.filter(s => s.totalQty === 0).length,
     }
 
-    return NextResponse.json({
+    return cachedJsonResponse({
       data: stockOverview,
       summary,
-    })
+    }, 30)
   } catch (error) {
     console.error('Error fetching stock overview:', error)
     return NextResponse.json(

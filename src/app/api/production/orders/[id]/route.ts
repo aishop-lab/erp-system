@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { getProductionById } from '@/services/production-service'
 
 // GET /api/production/orders/[id] - Get single production order
@@ -10,28 +9,16 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const production = await getProductionById(id, currentUser.tenantId)
+    const production = await getProductionById(id, auth.user.tenantId)
 
     if (!production) {
       return NextResponse.json({ error: 'Production order not found' }, { status: 404 })
     }
 
-    return NextResponse.json(production)
+    return cachedJsonResponse(production, 30)
   } catch (error) {
     console.error('Error fetching production order:', error)
     return NextResponse.json(

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserById, updateUser, deactivateUser, getUserPermissions } from '@/services/user-service'
 import { updateUserSchema } from '@/validators/user'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -10,18 +9,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
@@ -31,7 +22,7 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    if (user.tenantId !== currentUser.tenantId) {
+    if (user.tenantId !== auth.user.tenantId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -48,24 +39,16 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     // Verify target user belongs to same tenant
     const targetUser = await getUserById(id)
-    if (!targetUser || targetUser.tenantId !== currentUser.tenantId) {
+    if (!targetUser || targetUser.tenantId !== auth.user.tenantId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -90,29 +73,21 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     // Don't allow deleting yourself
-    if (id === currentUser.id) {
+    if (id === auth.user.id) {
       return NextResponse.json({ error: 'Cannot deactivate yourself' }, { status: 400 })
     }
 
     // Verify target user belongs to same tenant
     const targetUser = await getUserById(id)
-    if (!targetUser || targetUser.tenantId !== currentUser.tenantId) {
+    if (!targetUser || targetUser.tenantId !== auth.user.tenantId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 

@@ -1,30 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { prisma } from '@/lib/prisma'
 import { createPurchaseOrderSchema } from '@/validators/purchase-order'
 import {
   getPurchaseOrders,
   createPurchaseOrder
 } from '@/services/po-service'
+import { authenticateRequest } from '@/lib/api-auth'
 import { z } from 'zod'
 
 // GET /api/purchase-orders - List all purchase orders with filters
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
     const params = {
@@ -35,7 +22,7 @@ export async function GET(request: NextRequest) {
       pageSize: parseInt(searchParams.get('pageSize') || '20'),
     }
 
-    const result = await getPurchaseOrders(currentUser.tenantId, params)
+    const result = await getPurchaseOrders(auth.user.tenantId, params)
 
     return NextResponse.json(result)
   } catch (error) {
@@ -50,20 +37,8 @@ export async function GET(request: NextRequest) {
 // POST /api/purchase-orders - Create a new purchase order
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
 
@@ -87,8 +62,8 @@ export async function POST(request: NextRequest) {
 
     // Create purchase order
     const purchaseOrder = await createPurchaseOrder(
-      currentUser.tenantId,
-      currentUser.id,
+      auth.user.tenantId,
+      auth.user.id,
       validatedData
     )
 
@@ -97,7 +72,6 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating purchase order:', error?.message)
 
-    // Check for specific error types
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         {
@@ -109,7 +83,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prisma errors
     if (error?.code) {
       if (error.code === 'P2002') {
         return NextResponse.json(
@@ -141,7 +114,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Generic Prisma error
       return NextResponse.json(
         {
           error: 'Database error',
@@ -152,7 +124,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Return error response
     return NextResponse.json(
       {
         error: 'Failed to create purchase order',

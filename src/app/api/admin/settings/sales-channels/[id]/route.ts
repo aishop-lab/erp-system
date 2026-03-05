@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SettingsService } from '@/services/settings-service'
 import { updateSalesChannelSchema } from '@/validators/settings'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -10,22 +9,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
-    const channel = await SettingsService.getSalesChannelById(id, currentUser.tenantId)
+    const channel = await SettingsService.getSalesChannelById(id, auth.user.tenantId)
     if (!channel) {
       return NextResponse.json({ error: 'Sales channel not found' }, { status: 404 })
     }
@@ -46,25 +37,17 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     const body = await request.json()
     const validatedData = updateSalesChannelSchema.parse(body)
 
-    const channel = await SettingsService.updateSalesChannel(id, currentUser.tenantId, validatedData)
+    const channel = await SettingsService.updateSalesChannel(id, auth.user.tenantId, validatedData)
     return NextResponse.json(channel)
   } catch (error: any) {
     console.error('Error updating sales channel:', error)
@@ -81,22 +64,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
-    await SettingsService.deactivateSalesChannel(id, currentUser.tenantId)
+    await SettingsService.deactivateSalesChannel(id, auth.user.tenantId)
     return NextResponse.json({ message: 'Sales channel deactivated' })
   } catch (error: any) {
     console.error('Error deactivating sales channel:', error)

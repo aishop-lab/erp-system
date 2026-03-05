@@ -1,28 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUsers, createUser } from '@/services/user-service'
 import { createUserSchema } from '@/validators/user'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Get the user from our database
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
-    const users = await getUsers(currentUser.tenantId)
+    const users = await getUsers(auth.user.tenantId)
     return NextResponse.json(users)
   } catch (error) {
     console.error('Error fetching users:', error)
@@ -32,25 +22,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser?.isSuperAdmin) {
+    if (!auth.user.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
     }
 
     const body = await request.json()
     const validatedData = createUserSchema.parse(body)
 
-    const { user, temporaryPassword } = await createUser(currentUser.tenantId, validatedData)
+    const { user, temporaryPassword } = await createUser(auth.user.tenantId, validatedData)
 
     return NextResponse.json({
       user,

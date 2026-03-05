@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupplierService } from '@/services/supplier-service'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function DELETE(
   request: NextRequest,
@@ -9,22 +8,10 @@ export async function DELETE(
 ) {
   try {
     const { pricingId } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    await SupplierService.deletePricing(pricingId, currentUser.tenantId)
+    await SupplierService.deletePricing(pricingId, auth.user.tenantId)
     return NextResponse.json({ message: 'Pricing deleted' })
   } catch (error: any) {
     console.error('Error deleting pricing:', error)

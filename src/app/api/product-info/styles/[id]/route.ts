@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { StyleService } from '@/services/product-info-service'
 import { updateStyleSchema } from '@/validators/product-info'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -10,22 +9,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const style = await StyleService.getById(id, currentUser.tenantId)
+    const style = await StyleService.getById(id, auth.user.tenantId)
     if (!style) {
       return NextResponse.json({ error: 'Style not found' }, { status: 404 })
     }
@@ -46,25 +33,13 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = updateStyleSchema.parse(body)
 
-    const style = await StyleService.update(id, currentUser.tenantId, validatedData)
+    const style = await StyleService.update(id, auth.user.tenantId, validatedData)
     return NextResponse.json({ style })
   } catch (error: any) {
     console.error('Error updating style:', error)
@@ -81,22 +56,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    await StyleService.deactivate(id, currentUser.tenantId)
+    await StyleService.deactivate(id, auth.user.tenantId)
     return NextResponse.json({ message: 'Style deactivated' })
   } catch (error: any) {
     console.error('Error deactivating style:', error)

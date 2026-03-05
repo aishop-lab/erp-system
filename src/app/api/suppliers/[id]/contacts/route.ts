@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupplierService } from '@/services/supplier-service'
 import { contactSchema } from '@/validators/supplier'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api-auth'
 
 export async function POST(
   request: NextRequest,
@@ -10,20 +9,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = contactSchema.parse(body)
@@ -31,7 +18,7 @@ export async function POST(
     const contact = await SupplierService.addContact(
       id,
       validatedData,
-      currentUser.tenantId
+      auth.user.tenantId
     )
 
     return NextResponse.json(contact, { status: 201 })

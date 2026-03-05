@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { authenticateRequest } from '@/lib/api-auth'
 import { z } from 'zod'
 
 const mediaSchema = z.object({
@@ -21,26 +21,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const media = await prisma.mediaFile.findMany({
       where: {
         entityType: 'finished_product',
         entityId: id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
       orderBy: [
         { isPrimary: 'desc' },
@@ -66,20 +54,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    const auth = await authenticateRequest()
+    if (auth.response) return auth.response
 
     const body = await request.json()
     const validatedData = mediaSchema.parse(body)
@@ -88,7 +64,7 @@ export async function POST(
     const product = await prisma.finishedProduct.findFirst({
       where: {
         id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
     })
 
@@ -101,7 +77,7 @@ export async function POST(
       where: {
         entityType: 'finished_product',
         entityId: id,
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
       },
     })
 
@@ -128,7 +104,7 @@ export async function POST(
         where: {
           entityType: 'finished_product',
           entityId: id,
-          tenantId: currentUser.tenantId,
+          tenantId: auth.user.tenantId,
           isPrimary: true,
         },
         data: {
@@ -145,7 +121,7 @@ export async function POST(
     // Create media record
     const media = await prisma.mediaFile.create({
       data: {
-        tenantId: currentUser.tenantId,
+        tenantId: auth.user.tenantId,
         entityType: 'finished_product',
         entityId: id,
         filePath: validatedData.filePath,
