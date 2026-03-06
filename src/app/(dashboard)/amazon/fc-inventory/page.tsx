@@ -18,24 +18,8 @@ export default function FCInventoryPage() {
   const [page, setPage] = useState(1)
   const pageSize = 25
 
-  // Fetch sales dashboard data which includes platform inventory
-  const { data, isLoading } = useSWR('/api/sales/dashboard', (url: string) =>
-    fetch(url).then(r => r.json()),
-    { revalidateOnFocus: false }
-  )
-
-  // For now, show a placeholder with the data we have from sales dashboard
-  const platformData = data?.platforms || []
-  const amazonPlatform = platformData.find((p: any) =>
-    p.name?.toLowerCase().includes('amazon')
-  )
-
-  // Use inventory stock data instead
-  const { data: stockData, isLoading: stockLoading } = useSWR(
-    '/api/inventory/stock-overview',
-    (url: string) => fetch(url).then(r => r.json()),
-    { revalidateOnFocus: false }
-  )
+  // Use inventory stock data
+  const { data: stockData, isLoading: stockLoading } = useSWR('/api/inventory/stock-overview')
 
   const stockItems = useMemo(() => {
     if (!stockData?.data) return []
@@ -78,7 +62,7 @@ export default function FCInventoryPage() {
     URL.revokeObjectURL(url)
   }
 
-  const loading = isLoading || stockLoading
+  const loading = stockLoading
 
   return (
     <div className="space-y-6">
@@ -124,42 +108,7 @@ export default function FCInventoryPage() {
             </Card>
           </div>
 
-          {/* Amazon Platform Info */}
-          {amazonPlatform && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Amazon Platform Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs">Platform</p>
-                    <p className="font-medium">{amazonPlatform.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Total Orders</p>
-                    <p className="font-medium">{amazonPlatform.orderCount?.toLocaleString() || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Revenue</p>
-                    <p className="font-medium">
-                      {amazonPlatform.totalRevenue
-                        ? Number(amazonPlatform.totalRevenue).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
-                        : '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Last Sync</p>
-                    <p className="font-medium">
-                      {amazonPlatform.lastSyncAt
-                        ? new Date(amazonPlatform.lastSyncAt).toLocaleString('en-IN')
-                        : 'Never'}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Amazon Platform Info removed — unnecessary extra API call */}
 
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4">

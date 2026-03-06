@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest } from '@/lib/api-auth'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { getSalesOrders } from '@/services/sales-service'
 
 export async function GET(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       pageSize: parseInt(searchParams.get('pageSize') || '20'),
     })
 
-    return NextResponse.json(result)
+    return cachedJsonResponse(result, 30)
   } catch (error: any) {
     console.error('Error fetching sales orders:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

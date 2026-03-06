@@ -1,6 +1,7 @@
 import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
+import { cached } from '@/lib/cache'
 
 export async function GET() {
   const auth = await authenticateRequest()
@@ -8,6 +9,11 @@ export async function GET() {
 
   const { tenantId } = auth.user
 
+  const data = await cached(`dashboard:${tenantId}`, 2 * 60 * 1000, () => fetchDashboard(tenantId))
+  return cachedJsonResponse(data, 60)
+}
+
+async function fetchDashboard(tenantId: string) {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const thirtyDaysAgo = new Date(now)
@@ -86,7 +92,7 @@ export async function GET() {
   const totalOrders30d = dailyRevenue.reduce((sum, d) => sum + d.orders, 0)
   const avgDailyRevenue = Math.round(totalRevenue30d / 30)
 
-  return cachedJsonResponse({
+  return {
     stats: {
       ordersThisMonth,
       activeProducts,
@@ -101,5 +107,5 @@ export async function GET() {
       totalOrders: totalOrders30d,
       avgDailyRevenue,
     },
-  })
+  }
 }

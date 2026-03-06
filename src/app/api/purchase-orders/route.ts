@@ -4,7 +4,7 @@ import {
   getPurchaseOrders,
   createPurchaseOrder
 } from '@/services/po-service'
-import { authenticateRequest } from '@/lib/api-auth'
+import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { z } from 'zod'
 
 // GET /api/purchase-orders - List all purchase orders with filters
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const result = await getPurchaseOrders(auth.user.tenantId, params)
 
-    return NextResponse.json(result)
+    return cachedJsonResponse(result, 15)
   } catch (error) {
     console.error('Error fetching purchase orders:', error)
     return NextResponse.json(
