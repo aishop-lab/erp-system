@@ -127,10 +127,10 @@ export default function SalesOrdersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Sales Orders"
-        description={`${data?.total || 0} orders across all platforms`}
+        description={`${data?.total?.toLocaleString('en-IN') || 0} orders across all platforms`}
         breadcrumbs={[
           { label: 'Sales', href: '/sales/orders' },
           { label: 'Orders' },
@@ -144,140 +144,180 @@ export default function SalesOrdersPage() {
       />
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by order #, customer..."
-            value={search}
-            onChange={e => handleSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={status} onValueChange={v => { setStatus(v); setPage(1) }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            {Object.entries(SALES_ORDER_STATUS_MAP).map(([key, val]) => (
-              <SelectItem key={key} value={key}>{val.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={platformId} onValueChange={v => { setPlatformId(v); setPage(1) }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Platform" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Platforms</SelectItem>
-            {platforms.map((p: any) => (
-              <SelectItem key={p.id} value={p.id}>{p.displayName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by order #, customer..."
+                value={search}
+                onChange={e => handleSearch(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+            <Select value={status} onValueChange={v => { setStatus(v); setPage(1) }}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                {Object.entries(SALES_ORDER_STATUS_MAP).map(([key, val]) => (
+                  <SelectItem key={key} value={key}>{val.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={platformId} onValueChange={v => { setPlatformId(v); setPage(1) }}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue placeholder="Platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Platforms</SelectItem>
+                {platforms.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>{p.displayName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order #</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    Loading...
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="font-semibold">Order #</TableHead>
+                  <TableHead className="font-semibold">Platform</TableHead>
+                  <TableHead className="font-semibold">Status</TableHead>
+                  <TableHead className="font-semibold">Customer</TableHead>
+                  <TableHead className="font-semibold text-center">Items</TableHead>
+                  <TableHead className="font-semibold text-right">Amount</TableHead>
+                  <TableHead className="font-semibold">Payment</TableHead>
+                  <TableHead className="font-semibold">Date</TableHead>
                 </TableRow>
-              ) : !data?.orders?.length ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    <Package className="mx-auto h-8 w-8 mb-2" />
-                    No orders found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                data.orders.map(order => {
-                  const statusInfo = SALES_ORDER_STATUS_MAP[order.status] || { label: order.status, variant: 'secondary' }
-                  return (
-                    <TableRow key={order.id}>
-                      <TableCell>
-                        <Link
-                          href={`/sales/orders/${order.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {order.orderNumber.length > 20
-                            ? `...${order.orderNumber.slice(-15)}`
-                            : order.orderNumber}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {order.platform.displayName}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusInfo.variant as any}>
-                          {statusInfo.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[150px] truncate">
-                        {order.customerName || '-'}
-                      </TableCell>
-                      <TableCell>{order._count.items}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(order.totalAmount)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={order.paymentStatus === 'paid' ? 'success' : 'secondary'} className="capitalize">
-                          {order.paymentStatus}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(order.orderedAt)}
-                      </TableCell>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 8 }).map((_, j) => (
+                        <TableCell key={j}>
+                          <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                        </TableCell>
+                      ))}
                     </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
+                  ))
+                ) : !data?.orders?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                      <Package className="mx-auto h-10 w-10 mb-3 text-muted-foreground/40" />
+                      <p className="font-medium">No orders found</p>
+                      <p className="text-sm mt-1">Try adjusting your filters</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  data.orders.map((order, idx) => {
+                    const statusInfo = SALES_ORDER_STATUS_MAP[order.status] || { label: order.status, variant: 'secondary' }
+                    return (
+                      <TableRow key={order.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                        <TableCell>
+                          <Link
+                            href={`/sales/orders/${order.id}`}
+                            className="font-medium text-primary hover:underline text-sm"
+                          >
+                            {order.orderNumber.length > 20
+                              ? `...${order.orderNumber.slice(-15)}`
+                              : order.orderNumber}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize text-xs font-normal">
+                            {order.platform.displayName}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusInfo.variant as any} className="text-xs">
+                            {statusInfo.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate text-sm">
+                          {order.customerName || '-'}
+                        </TableCell>
+                        <TableCell className="text-center text-sm tabular-nums">
+                          {order._count.items}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-sm tabular-nums">
+                          {formatCurrency(order.totalAmount)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={order.paymentStatus === 'paid' ? 'success' : 'secondary'}
+                            className="capitalize text-xs"
+                          >
+                            {order.paymentStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm tabular-nums">
+                          {formatDate(order.orderedAt)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-1">
           <p className="text-sm text-muted-foreground">
-            Showing {(data.page - 1) * data.pageSize + 1}-{Math.min(data.page * data.pageSize, data.total)} of {data.total}
+            Showing <span className="font-medium text-foreground">{(data.page - 1) * data.pageSize + 1}</span>-<span className="font-medium text-foreground">{Math.min(data.page * data.pageSize, data.total)}</span> of <span className="font-medium text-foreground">{data.total.toLocaleString('en-IN')}</span>
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               variant="outline"
               size="sm"
+              className="h-8 w-8 p-0"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm">
-              Page {data.page} of {data.totalPages}
-            </span>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, data.totalPages) }, (_, i) => {
+                let pageNum: number
+                if (data.totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (page <= 3) {
+                  pageNum = i + 1
+                } else if (page >= data.totalPages - 2) {
+                  pageNum = data.totalPages - 4 + i
+                } else {
+                  pageNum = page - 2 + i
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={pageNum === page ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 w-8 p-0 text-xs"
+                    onClick={() => setPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
             <Button
               variant="outline"
               size="sm"
+              className="h-8 w-8 p-0"
               onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
               disabled={page === data.totalPages}
             >

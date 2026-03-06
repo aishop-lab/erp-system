@@ -83,9 +83,19 @@ export async function getSalesOrderById(id: string, tenantId: string) {
   })
 }
 
-export async function getSalesDashboard(tenantId: string, days = 30): Promise<SalesDashboardStats> {
-  const since = new Date()
-  since.setDate(since.getDate() - days)
+export async function getSalesDashboard(
+  tenantId: string,
+  opts: { startDate?: string; endDate?: string } = {}
+): Promise<SalesDashboardStats> {
+  const dateWhere = opts.startDate && opts.endDate
+    ? { orderedAt: { gte: new Date(opts.startDate), lte: new Date(opts.endDate) } }
+    : opts.startDate
+      ? { orderedAt: { gte: new Date(opts.startDate) } }
+      : {}
+
+  const revenueStartDate = opts.startDate
+    ? new Date(opts.startDate)
+    : (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d })()
 
   const [
     totalOrders,
@@ -97,22 +107,22 @@ export async function getSalesDashboard(tenantId: string, days = 30): Promise<Sa
     recentOrders,
     dailyRevenue,
   ] = await Promise.all([
-    prisma.salesOrder.count({ where: { tenantId } }),
-    prisma.salesOrder.count({ where: { tenantId, status: 'pending' } }),
-    prisma.salesOrder.count({ where: { tenantId, status: 'delivered' } }),
-    prisma.salesOrder.count({ where: { tenantId, status: 'cancelled' } }),
+    prisma.salesOrder.count({ where: { tenantId, ...dateWhere } }),
+    prisma.salesOrder.count({ where: { tenantId, status: 'pending', ...dateWhere } }),
+    prisma.salesOrder.count({ where: { tenantId, status: 'delivered', ...dateWhere } }),
+    prisma.salesOrder.count({ where: { tenantId, status: 'cancelled', ...dateWhere } }),
     prisma.salesOrder.aggregate({
-      where: { tenantId },
+      where: { tenantId, ...dateWhere },
       _sum: { totalAmount: true },
     }),
     prisma.salesOrder.groupBy({
       by: ['platformId'],
-      where: { tenantId },
+      where: { tenantId, ...dateWhere },
       _count: true,
       _sum: { totalAmount: true },
     }),
     prisma.salesOrder.findMany({
-      where: { tenantId },
+      where: { tenantId, ...dateWhere },
       include: {
         platform: { select: { name: true, displayName: true } },
         _count: { select: { items: true } },
@@ -121,7 +131,13 @@ export async function getSalesDashboard(tenantId: string, days = 30): Promise<Sa
       take: 10,
     }),
     prisma.salesRevenue.findMany({
-      where: { tenantId, date: { gte: since } },
+      where: {
+        tenantId,
+        date: {
+          gte: revenueStartDate,
+          ...(opts.endDate ? { lte: new Date(opts.endDate) } : {}),
+        },
+      },
       orderBy: { date: 'asc' },
     }),
   ])

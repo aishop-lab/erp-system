@@ -1,15 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { subDays, endOfDay, startOfDay } from 'date-fns'
+import useSWR from 'swr'
+import { fetcher } from '@/lib/swr'
 import { PageHeader } from '@/components/shared/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { DateRangeFilter, DateRangeValue } from '@/components/shared/date-range-filter'
 import {
   Table,
   TableBody,
@@ -18,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { IndianRupee, TrendingUp, Package, Lock } from 'lucide-react'
+import { IndianRupee, TrendingUp, Package, Lock, ShoppingCart } from 'lucide-react'
 import {
   ResponsiveContainer,
   BarChart,
@@ -35,20 +32,29 @@ import {
   Legend,
 } from 'recharts'
 
-const COLORS = ['hsl(142, 76%, 36%)', 'hsl(48, 96%, 53%)', 'hsl(0, 84%, 60%)']
+const STATUS_COLORS: Record<string, string> = {
+  Delivered: '#16a34a',
+  Shipped: '#2563eb',
+  Cancelled: '#dc2626',
+  Refunded: '#ea580c',
+}
+
+const PAYMENT_COLORS = ['#16a34a', '#eab308', '#dc2626']
 
 export default function SalesFinancePage() {
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [days, setDays] = useState('365')
+  const [dateRange, setDateRange] = useState<DateRangeValue>({
+    startDate: startOfDay(subDays(new Date(), 365)).toISOString(),
+    endDate: endOfDay(new Date()).toISOString(),
+  })
 
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/sales/finance?days=${days}`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [days])
+  const params = new URLSearchParams()
+  if (dateRange.startDate) params.set('startDate', dateRange.startDate)
+  if (dateRange.endDate) params.set('endDate', dateRange.endDate)
+
+  const { data, isLoading: loading } = useSWR(`/api/sales/finance?${params}`, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  })
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
@@ -65,15 +71,57 @@ export default function SalesFinancePage() {
       <div className="space-y-6">
         <PageHeader title="Finance Analytics" description="Revenue, COGS estimates, and P&L overview" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1,2,3,4].map(i => (
-            <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse rounded bg-muted" /></CardContent></Card>
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-4">
+                  <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                    <div className="h-6 w-32 animate-pulse rounded bg-muted" />
+                    <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
-          {[1,2].map(i => (
-            <Card key={i}><CardContent className="pt-6"><div className="h-[250px] animate-pulse rounded bg-muted" /></CardContent></Card>
+          {[1, 2].map(i => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <div className="h-5 w-36 animate-pulse rounded bg-muted" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-[260px] animate-pulse rounded bg-muted" />
+              </CardContent>
+            </Card>
           ))}
         </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="h-5 w-52 animate-pulse rounded bg-muted" />
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px] animate-pulse rounded bg-muted" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="space-y-0">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="flex gap-4 border-b px-6 py-3">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(j => (
+                    <div key={j} className="h-4 flex-1 animate-pulse rounded bg-muted" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -95,6 +143,105 @@ export default function SalesFinancePage() {
     { name: 'Refunded', value: data.payments.refunded.total, count: data.payments.refunded.cnt },
   ].filter(p => p.value > 0)
 
+  const paymentTotal = paymentData.reduce((sum, p) => sum + p.value, 0)
+
+  // Compute totals row for P&L
+  const pnlTotals = data.monthlyPnL?.reduce(
+    (acc: any, m: any) => ({
+      orders: acc.orders + (m.orders || 0),
+      revenue: acc.revenue + (m.revenue || 0),
+      estCOGS: acc.estCOGS + (m.estCOGS || 0),
+      margin: acc.margin + (m.margin || 0),
+      cancelled: acc.cancelled + (m.cancelled || 0),
+      refunded: acc.refunded + (m.refunded || 0),
+    }),
+    { orders: 0, revenue: 0, estCOGS: 0, margin: 0, cancelled: 0, refunded: 0 }
+  )
+  if (pnlTotals) {
+    pnlTotals.marginPct = pnlTotals.revenue > 0 ? (pnlTotals.margin / pnlTotals.revenue) * 100 : 0
+  }
+
+  const CustomBarTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="rounded-lg border bg-white p-3 shadow-md dark:bg-gray-900">
+        <p className="mb-1 text-sm font-medium">{label}</p>
+        <p className="text-sm font-semibold" style={{ color: payload[0]?.fill }}>
+          {fmt(payload[0]?.value || 0)}
+        </p>
+      </div>
+    )
+  }
+
+  const CustomPieTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null
+    const entry = payload[0]
+    return (
+      <div className="rounded-lg border bg-white p-3 shadow-md dark:bg-gray-900">
+        <p className="mb-1 text-sm font-medium">{entry.name}</p>
+        <p className="text-sm font-semibold" style={{ color: entry.payload?.fill }}>
+          {fmt(entry.value)}
+        </p>
+        <p className="text-xs text-muted-foreground">{entry.payload?.count} orders</p>
+      </div>
+    )
+  }
+
+  const CustomAreaTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="rounded-lg border bg-white p-3 shadow-md dark:bg-gray-900">
+        <p className="mb-1.5 text-sm font-medium">{label}</p>
+        {payload.map((entry: any, i: number) => (
+          <div key={i} className="flex items-center gap-2 text-sm">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.stroke }} />
+            <span className="text-muted-foreground">{entry.name}:</span>
+            <span className="font-medium">{fmt(entry.value)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const statCards = [
+    {
+      label: 'Total Revenue',
+      value: fmt(data.revenue.total),
+      subtitle: 'Delivered + Shipped',
+      icon: IndianRupee,
+      borderColor: 'border-l-green-500',
+      iconBg: 'bg-green-50 dark:bg-green-950/40',
+      iconColor: 'text-green-600 dark:text-green-400',
+    },
+    {
+      label: 'Estimated COGS',
+      value: fmt(data.estimatedCOGS),
+      subtitle: 'From product cost data',
+      icon: Package,
+      borderColor: 'border-l-orange-500',
+      iconBg: 'bg-orange-50 dark:bg-orange-950/40',
+      iconColor: 'text-orange-600 dark:text-orange-400',
+    },
+    {
+      label: 'Gross Margin',
+      value: fmt(data.grossMargin),
+      subtitle: `${data.marginPct.toFixed(1)}% margin`,
+      icon: TrendingUp,
+      borderColor: 'border-l-emerald-500',
+      iconBg: 'bg-emerald-50 dark:bg-emerald-950/40',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
+      label: 'Revenue / Order',
+      value: fmt(data.revenuePerOrder),
+      subtitle: `${data.revenuePerOrder > 0 ? Math.round(data.revenue.total / data.revenuePerOrder).toLocaleString('en-IN') : 0} orders`,
+      icon: ShoppingCart,
+      borderColor: 'border-l-blue-500',
+      iconBg: 'bg-blue-50 dark:bg-blue-950/40',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -105,97 +252,83 @@ export default function SalesFinancePage() {
           { label: 'Finance' },
         ]}
         actions={
-          <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-              <SelectItem value="365">Last year</SelectItem>
-              <SelectItem value="0">All time</SelectItem>
-            </SelectContent>
-          </Select>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         }
       />
 
       {/* Stat Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold">{fmt(data.revenue.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Delivered + Shipped</p>
+        {statCards.map(card => (
+          <Card key={card.label} className={`border-l-4 ${card.borderColor}`}>
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-center gap-4">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
+                  <card.icon className={`h-5 w-5 ${card.iconColor}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">{card.label}</p>
+                  <p className="text-2xl font-bold tracking-tight">{card.value}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{card.subtitle}</p>
+                </div>
               </div>
-              <IndianRupee className="h-8 w-8 text-muted-foreground/30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Estimated COGS</p>
-                <p className="text-2xl font-bold">{fmt(data.estimatedCOGS)}</p>
-                <p className="text-xs text-muted-foreground mt-1">From product cost data</p>
-              </div>
-              <Package className="h-8 w-8 text-muted-foreground/30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Gross Margin</p>
-                <p className="text-2xl font-bold text-green-600">{fmt(data.grossMargin)}</p>
-                <p className="text-xs text-muted-foreground mt-1">{data.marginPct.toFixed(1)}% margin</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-green-500/30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Revenue/Order</p>
-                <p className="text-2xl font-bold">{fmt(data.revenuePerOrder)}</p>
-              </div>
-              <IndianRupee className="h-8 w-8 text-muted-foreground/30" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Revenue by Status + Payment Collection */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle>Revenue by Status</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Revenue by Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={revenueByStatus} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={fmtCompact} />
-                <YAxis type="category" dataKey="name" width={80} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={revenueByStatus} layout="vertical" margin={{ left: 0, right: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                <XAxis
+                  type="number"
+                  tickFormatter={fmtCompact}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={80}
+                  tick={{ fontSize: 13, fill: 'hsl(var(--foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.3 }} />
+                <Bar
+                  dataKey="value"
+                  radius={[0, 6, 6, 0]}
+                  barSize={28}
+                  label={{
+                    position: 'right',
+                    formatter: (v: any) => fmtCompact(Number(v)),
+                    fontSize: 12,
+                    fill: 'hsl(var(--muted-foreground))',
+                  }}
+                >
+                  {revenueByStatus.map((entry) => (
+                    <Cell key={entry.name} fill={STATUS_COLORS[entry.name] || '#6b7280'} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Payment Collection</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Payment Collection</CardTitle>
           </CardHeader>
           <CardContent>
             {paymentData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie
                     data={paymentData}
@@ -203,19 +336,51 @@ export default function SalesFinancePage() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    label={({ name, payload }: any) => `${name} (${payload?.count || 0})`}
+                    innerRadius={60}
+                    outerRadius={95}
+                    paddingAngle={3}
+                    strokeWidth={0}
                   >
                     {paymentData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      <Cell key={i} fill={PAYMENT_COLORS[i % PAYMENT_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                  <Legend />
+                  <Tooltip content={<CustomPieTooltip />} />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    formatter={(value: string) => (
+                      <span className="text-sm text-foreground">{value}</span>
+                    )}
+                  />
+                  {/* Center text */}
+                  <text
+                    x="50%"
+                    y="46%"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="fill-muted-foreground"
+                    fontSize={12}
+                  >
+                    Total
+                  </text>
+                  <text
+                    x="50%"
+                    y="55%"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="fill-foreground"
+                    fontSize={15}
+                    fontWeight={700}
+                  >
+                    {fmtCompact(paymentTotal)}
+                  </text>
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-10">No payment data</p>
+              <div className="flex h-[260px] items-center justify-center">
+                <p className="text-sm text-muted-foreground">No payment data</p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -224,19 +389,60 @@ export default function SalesFinancePage() {
       {/* Revenue vs COGS Trend */}
       {data.revenueTrend?.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Revenue vs Estimated COGS Trend</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Revenue vs Estimated COGS Trend</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={data.revenueTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis tickFormatter={fmtCompact} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Legend />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="hsl(142, 76%, 36%)" fill="hsl(142, 76%, 36%)" fillOpacity={0.15} />
-                <Area type="monotone" dataKey="cogs" name="Est. COGS" stroke="hsl(0, 84%, 60%)" fill="hsl(0, 84%, 60%)" fillOpacity={0.15} />
+              <AreaChart data={data.revenueTrend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="gradCOGS" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#dc2626" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#dc2626" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={fmtCompact}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={55}
+                />
+                <Tooltip content={<CustomAreaTooltip />} />
+                <Legend
+                  verticalAlign="top"
+                  height={36}
+                  formatter={(value: string) => (
+                    <span className="text-sm text-muted-foreground">{value}</span>
+                  )}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  name="Revenue"
+                  stroke="#16a34a"
+                  strokeWidth={2}
+                  fill="url(#gradRevenue)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="cogs"
+                  name="Est. COGS"
+                  stroke="#dc2626"
+                  strokeWidth={2}
+                  fill="url(#gradCOGS)"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -246,38 +452,61 @@ export default function SalesFinancePage() {
       {/* Monthly P&L Table */}
       {data.monthlyPnL?.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Monthly P&L</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Monthly P&L</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Orders</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">Est. COGS</TableHead>
-                  <TableHead className="text-right">Margin</TableHead>
-                  <TableHead className="text-right">Margin %</TableHead>
-                  <TableHead className="text-right">Cancelled</TableHead>
-                  <TableHead className="text-right">Refunded</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.monthlyPnL.map((m: any) => (
-                  <TableRow key={m.month}>
-                    <TableCell className="font-medium">{m.month}</TableCell>
-                    <TableCell className="text-right">{m.orders}</TableCell>
-                    <TableCell className="text-right">{fmt(m.revenue)}</TableCell>
-                    <TableCell className="text-right">{fmt(m.estCOGS)}</TableCell>
-                    <TableCell className="text-right text-green-600">{fmt(m.margin)}</TableCell>
-                    <TableCell className="text-right">{m.marginPct.toFixed(1)}%</TableCell>
-                    <TableCell className="text-right text-red-600">{m.cancelled}</TableCell>
-                    <TableCell className="text-right text-orange-600">{m.refunded}</TableCell>
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow className="border-b-2 hover:bg-transparent">
+                    <TableHead className="py-2.5 pl-6 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Month</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Orders</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Revenue</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Est. COGS</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Margin</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Margin %</TableHead>
+                    <TableHead className="py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cancelled</TableHead>
+                    <TableHead className="py-2.5 pr-6 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Refunded</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {data.monthlyPnL.map((m: any, idx: number) => (
+                    <TableRow key={m.month} className={idx % 2 === 0 ? 'bg-muted/30' : ''}>
+                      <TableCell className="py-2.5 pl-6 font-medium">{m.month}</TableCell>
+                      <TableCell className="py-2.5 text-right tabular-nums">{m.orders.toLocaleString('en-IN')}</TableCell>
+                      <TableCell className="py-2.5 text-right tabular-nums">{fmt(m.revenue)}</TableCell>
+                      <TableCell className="py-2.5 text-right tabular-nums">{fmt(m.estCOGS)}</TableCell>
+                      <TableCell className={`py-2.5 text-right tabular-nums ${m.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {fmt(m.margin)}
+                      </TableCell>
+                      <TableCell className={`py-2.5 text-right tabular-nums ${m.marginPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {m.marginPct.toFixed(1)}%
+                      </TableCell>
+                      <TableCell className="py-2.5 text-right tabular-nums text-red-600">{m.cancelled}</TableCell>
+                      <TableCell className="py-2.5 pr-6 text-right tabular-nums text-orange-600">{m.refunded}</TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Totals Row */}
+                  {pnlTotals && (
+                    <TableRow className="border-t-2 bg-muted/50 font-bold hover:bg-muted/50">
+                      <TableCell className="py-3 pl-6 font-bold">Total</TableCell>
+                      <TableCell className="py-3 text-right tabular-nums font-bold">{pnlTotals.orders.toLocaleString('en-IN')}</TableCell>
+                      <TableCell className="py-3 text-right tabular-nums font-bold">{fmt(pnlTotals.revenue)}</TableCell>
+                      <TableCell className="py-3 text-right tabular-nums font-bold">{fmt(pnlTotals.estCOGS)}</TableCell>
+                      <TableCell className={`py-3 text-right tabular-nums font-bold ${pnlTotals.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {fmt(pnlTotals.margin)}
+                      </TableCell>
+                      <TableCell className={`py-3 text-right tabular-nums font-bold ${pnlTotals.marginPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {pnlTotals.marginPct.toFixed(1)}%
+                      </TableCell>
+                      <TableCell className="py-3 text-right tabular-nums font-bold text-red-600">{pnlTotals.cancelled}</TableCell>
+                      <TableCell className="py-3 pr-6 text-right tabular-nums font-bold text-orange-600">{pnlTotals.refunded}</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -285,13 +514,15 @@ export default function SalesFinancePage() {
       {/* Coming Soon Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         {['Platform Fees', 'Expense Tracking', 'Marketplace Settlements'].map(title => (
-          <Card key={title} className="opacity-60">
-            <CardContent className="pt-6">
+          <Card key={title} className="border-dashed bg-muted/20">
+            <CardContent className="pt-6 pb-6">
               <div className="flex items-center gap-3">
-                <Lock className="h-5 w-5 text-muted-foreground" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                </div>
                 <div>
-                  <p className="font-medium">{title}</p>
-                  <p className="text-sm text-muted-foreground">Coming soon</p>
+                  <p className="font-medium text-muted-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground/70">Coming soon</p>
                 </div>
               </div>
             </CardContent>

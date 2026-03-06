@@ -75,20 +75,43 @@ export async function syncAmazonOrders(
         })
 
         const status = mapOrderStatus(order.order_status)
-        const orderTotal = order.order_total ? parseFloat(order.order_total.amount) : 0
+        const orderTotalFromApi = order.order_total ? parseFloat(order.order_total.amount) : 0
 
         if (existing) {
+          const updateData: any = {
+            status: status as any,
+            paymentStatus: mapPaymentStatus(order.order_status),
+            fulfillmentStatus: mapFulfillmentStatus(order.order_status),
+            shippedAt: order.order_status === 'Shipped' ? new Date(order.last_update_date) : undefined,
+            cancelledAt: order.order_status === 'Canceled' ? new Date(order.last_update_date) : undefined,
+            platformMetadata: buildMetadata(order),
+          }
+
+          if (orderTotalFromApi > 0) {
+            updateData.totalAmount = orderTotalFromApi
+            updateData.subtotal = orderTotalFromApi
+          } else {
+            // Backfill from items if current amount is 0
+            const existingOrder = await prisma.salesOrder.findUnique({
+              where: { id: existing.id },
+              select: { totalAmount: true },
+            })
+            if (Number(existingOrder?.totalAmount || 0) === 0) {
+              const itemsTotal = await prisma.salesOrderItem.aggregate({
+                where: { orderId: existing.id },
+                _sum: { total: true },
+              })
+              const computed = Number(itemsTotal._sum.total || 0)
+              if (computed > 0) {
+                updateData.totalAmount = computed
+                updateData.subtotal = computed
+              }
+            }
+          }
+
           await prisma.salesOrder.update({
             where: { id: existing.id },
-            data: {
-              status: status as any,
-              paymentStatus: mapPaymentStatus(order.order_status),
-              fulfillmentStatus: mapFulfillmentStatus(order.order_status),
-              totalAmount: orderTotal,
-              shippedAt: order.order_status === 'Shipped' ? new Date(order.last_update_date) : undefined,
-              cancelledAt: order.order_status === 'Canceled' ? new Date(order.last_update_date) : undefined,
-              platformMetadata: buildMetadata(order),
-            },
+            data: updateData,
           })
           recordsUpdated++
         } else {
@@ -103,8 +126,8 @@ export async function syncAmazonOrders(
               customerEmail: order.buyer_info?.buyer_email || null,
               customerPhone: order.shipping_address?.phone || null,
               shippingAddress: order.shipping_address || undefined,
-              subtotal: orderTotal,
-              totalAmount: orderTotal,
+              subtotal: orderTotalFromApi,
+              totalAmount: orderTotalFromApi,
               paymentStatus: mapPaymentStatus(order.order_status),
               fulfillmentStatus: mapFulfillmentStatus(order.order_status),
               platformMetadata: buildMetadata(order),
@@ -118,13 +141,29 @@ export async function syncAmazonOrders(
           // Fetch and create order items
           await processOrderItems(amazonClient, tenantId, newOrder.id, order.amazon_order_id, skuToProduct)
 
+          // If order_total was 0, compute from items
+          let finalTotal = orderTotalFromApi
+          if (finalTotal === 0) {
+            const itemsTotal = await prisma.salesOrderItem.aggregate({
+              where: { orderId: newOrder.id },
+              _sum: { total: true },
+            })
+            finalTotal = Number(itemsTotal._sum.total || 0)
+            if (finalTotal > 0) {
+              await prisma.salesOrder.update({
+                where: { id: newOrder.id },
+                data: { totalAmount: finalTotal, subtotal: finalTotal },
+              })
+            }
+          }
+
           // Create payment record
-          if (orderTotal > 0) {
+          if (finalTotal > 0) {
             await prisma.salesPayment.create({
               data: {
                 orderId: newOrder.id,
                 tenantId,
-                amount: orderTotal,
+                amount: finalTotal,
                 method: order.payment_method || 'amazon',
                 transactionId: order.amazon_order_id,
                 status: mapPaymentStatus(order.order_status) === 'paid' ? 'completed' : 'pending',
@@ -139,8 +178,8 @@ export async function syncAmazonOrders(
               tenantId,
               orderId: newOrder.id,
               platformId,
-              grossRevenue: orderTotal,
-              netRevenue: orderTotal,
+              grossRevenue: finalTotal,
+              netRevenue: finalTotal,
               date: new Date(order.purchase_date),
             },
           }).catch(() => {}) // Ignore if duplicate

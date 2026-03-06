@@ -35,10 +35,15 @@ export interface FinanceAnalytics {
   revenueTrend: { month: string; revenue: number; cogs: number }[]
 }
 
-export async function getFinanceAnalytics(tenantId: string, days: number = 365): Promise<FinanceAnalytics> {
-  const dateFilter = days > 0
-    ? Prisma.sql`AND so."orderedAt" >= NOW() - INTERVAL '${Prisma.raw(String(days))} days'`
-    : Prisma.empty
+export async function getFinanceAnalytics(
+  tenantId: string,
+  opts: { startDate?: string; endDate?: string } = {}
+): Promise<FinanceAnalytics> {
+  const dateFilter = opts.startDate && opts.endDate
+    ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)} AND so."orderedAt" <= ${new Date(opts.endDate)}`
+    : opts.startDate
+      ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)}`
+      : Prisma.empty
 
   const [
     revenueByStatus,
@@ -207,10 +212,15 @@ export interface AmazonAnalytics {
   }[]
 }
 
-export async function getAmazonAnalytics(tenantId: string, days: number = 90): Promise<AmazonAnalytics> {
-  const dateFilter = days > 0
-    ? Prisma.sql`AND so."orderedAt" >= NOW() - INTERVAL '${Prisma.raw(String(days))} days'`
-    : Prisma.empty
+export async function getAmazonAnalytics(
+  tenantId: string,
+  opts: { startDate?: string; endDate?: string } = {}
+): Promise<AmazonAnalytics> {
+  const dateFilter = opts.startDate && opts.endDate
+    ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)} AND so."orderedAt" <= ${new Date(opts.endDate)}`
+    : opts.startDate
+      ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)}`
+      : Prisma.empty
 
   const [
     statusCounts,
@@ -393,10 +403,15 @@ export interface ProductPerformance {
   bySize: { size: string; orders: number; qty: number; revenue: number }[]
 }
 
-export async function getProductPerformance(tenantId: string, days: number = 365): Promise<ProductPerformance> {
-  const dateFilter = days > 0
-    ? Prisma.sql`AND so."orderedAt" >= NOW() - INTERVAL '${Prisma.raw(String(days))} days'`
-    : Prisma.empty
+export async function getProductPerformance(
+  tenantId: string,
+  opts: { startDate?: string; endDate?: string } = {}
+): Promise<ProductPerformance> {
+  const dateFilter = opts.startDate && opts.endDate
+    ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)} AND so."orderedAt" <= ${new Date(opts.endDate)}`
+    : opts.startDate
+      ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)}`
+      : Prisma.empty
 
   const [
     catalogSize,

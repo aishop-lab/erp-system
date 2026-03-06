@@ -54,10 +54,8 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Skip expensive getUser() call for API routes — they authenticate themselves
+  // Skip auth check for API routes — they authenticate themselves
   if (request.nextUrl.pathname.startsWith('/api/')) {
-    // Still refresh the session cookie if needed
-    await supabase.auth.getSession()
     return response
   }
 

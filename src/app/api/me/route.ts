@@ -2,13 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
+// In-memory cache for /api/me responses (avoid DB hit on every navigation)
+const meCache = new Map<string, { data: any; timestamp: number }>()
+const ME_CACHE_TTL = 300_000 // 5 minutes
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
 
-    if (!authUser) {
+    if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const authUser = session.user
+
+    // Check cache
+    const cached = meCache.get(authUser.id)
+    if (cached && Date.now() - cached.timestamp < ME_CACHE_TTL) {
+      return NextResponse.json(cached.data, {
+        headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
+      })
     }
 
     // First try to find by supabaseUserId
@@ -38,7 +52,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    return NextResponse.json({
+    const responseData = {
       id: currentUser.id,
       email: currentUser.email,
       name: currentUser.name,
@@ -51,10 +65,12 @@ export async function GET(request: NextRequest) {
         subModule: p.subModule,
         permissionLevel: p.permissionLevel,
       })),
-    }, {
-      headers: {
-        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
-      },
+    }
+
+    meCache.set(authUser.id, { data: responseData, timestamp: Date.now() })
+
+    return NextResponse.json(responseData, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
     })
   } catch (error) {
     console.error('Error fetching current user:', error)

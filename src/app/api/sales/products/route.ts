@@ -8,9 +8,10 @@ export async function GET(request: NextRequest) {
     if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
-    const days = parseInt(searchParams.get('days') || '365')
+    const startDate = searchParams.get('startDate') || undefined
+    const endDate = searchParams.get('endDate') || undefined
 
-    const data = await getProductPerformance(auth.user.tenantId, days)
+    const data = await getProductPerformance(auth.user.tenantId, { startDate, endDate })
     return cachedJsonResponse(data, 300)
   } catch (error: any) {
     console.error('Error fetching product performance:', error)

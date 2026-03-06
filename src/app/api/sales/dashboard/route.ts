@@ -8,9 +8,10 @@ export async function GET(request: NextRequest) {
     if (auth.response) return auth.response
 
     const { searchParams } = new URL(request.url)
-    const days = parseInt(searchParams.get('days') || '30')
+    const startDate = searchParams.get('startDate') || undefined
+    const endDate = searchParams.get('endDate') || undefined
 
-    const dashboard = await getSalesDashboard(auth.user.tenantId, days)
+    const dashboard = await getSalesDashboard(auth.user.tenantId, { startDate, endDate })
 
     return NextResponse.json(dashboard)
   } catch (error: any) {

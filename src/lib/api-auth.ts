@@ -19,7 +19,7 @@ type AuthResult =
 // Cache user lookups in-memory for the duration of a request
 // (Next.js deduplicates within a single request lifecycle)
 const userCache = new Map<string, { user: AuthenticatedUser; timestamp: number }>()
-const CACHE_TTL = 30_000 // 30 seconds
+const CACHE_TTL = 300_000 // 5 minutes
 
 /**
  * Authenticate an API request. Returns the current user or an error response.
@@ -27,23 +27,28 @@ const CACHE_TTL = 30_000 // 30 seconds
  */
 export async function authenticateRequest(): Promise<AuthResult> {
   const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  if (!authUser) {
+  // Use getSession() (JWT-only, no network call) instead of getUser() (network call).
+  // Middleware already validates the session on every request, so JWT is trustworthy here.
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session?.user) {
     return {
       error: 'Unauthorized',
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     }
   }
 
+  const authUserId = session.user.id
+
   // Check in-memory cache
-  const cached = userCache.get(authUser.id)
+  const cached = userCache.get(authUserId)
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return { user: cached.user }
   }
 
   const currentUser = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
+    where: { supabaseUserId: authUserId },
     select: {
       id: true,
       email: true,
@@ -63,7 +68,7 @@ export async function authenticateRequest(): Promise<AuthResult> {
   }
 
   const user = currentUser as AuthenticatedUser
-  userCache.set(authUser.id, { user, timestamp: Date.now() })
+  userCache.set(authUserId, { user, timestamp: Date.now() })
 
   return { user }
 }
