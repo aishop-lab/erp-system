@@ -203,7 +203,7 @@ export async function createGRN(
   userId: string,
   data: CreateGRNInput
 ) {
-  const { purchaseOrderId, notes, lineItems } = data
+  const { purchaseOrderId, notes, closePO, lineItems } = data
 
   // Validate PO exists and is eligible
   const po = await prisma.purchaseOrder.findFirst({
@@ -412,7 +412,7 @@ export async function createGRN(
     })
 
     let newPOStatus: POStatus
-    if (allFullyReceived) {
+    if (closePO || allFullyReceived) {
       newPOStatus = POStatus.goods_received
     } else if (someReceived) {
       newPOStatus = POStatus.partially_received

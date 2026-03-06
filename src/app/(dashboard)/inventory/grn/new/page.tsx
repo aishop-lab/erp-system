@@ -201,7 +201,7 @@ export default function NewGRNPage() {
     })
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (closePO: boolean) => {
     if (!selectedPOId) {
       alert('Please select a purchase order')
       return
@@ -225,6 +225,13 @@ export default function NewGRNPage() {
       }
     }
 
+    if (closePO) {
+      const hasRemaining = lineItems.some(item => item.receivedQty < item.pendingQty)
+      if (hasRemaining && !confirm('Some items have pending quantities. Are you sure you want to close the PO?')) {
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/inventory/grn', {
@@ -233,6 +240,7 @@ export default function NewGRNPage() {
         body: JSON.stringify({
           purchaseOrderId: selectedPOId,
           notes: grnNotes || undefined,
+          closePO,
           lineItems: itemsToSubmit.map(item => ({
             poLineItemId: item.poLineItemId,
             receivedQty: item.receivedQty,
@@ -251,7 +259,7 @@ export default function NewGRNPage() {
       }
 
       const result = await res.json()
-      alert(`GRN created successfully: ${result.grnNumber}`)
+      alert(`GRN created successfully: ${result.grnNumber}${closePO ? ' (PO closed)' : ' (PO kept open)'}`)
 
       // Prepare barcode items from inventory batches
       if (result.inventoryBatches && result.inventoryBatches.length > 0) {
@@ -515,8 +523,18 @@ export default function NewGRNPage() {
                 <Button variant="outline" onClick={() => router.back()}>
                   Cancel
                 </Button>
-                <Button onClick={handleSubmit} disabled={submitting || lineItems.length === 0}>
-                  {submitting ? <LoadingSpinner size="sm" /> : 'Create GRN'}
+                <Button
+                  variant="secondary"
+                  onClick={() => handleSubmit(false)}
+                  disabled={submitting || lineItems.length === 0}
+                >
+                  {submitting ? <LoadingSpinner size="sm" /> : 'Create GRN & Keep PO Open'}
+                </Button>
+                <Button
+                  onClick={() => handleSubmit(true)}
+                  disabled={submitting || lineItems.length === 0}
+                >
+                  {submitting ? <LoadingSpinner size="sm" /> : 'Create GRN & Close PO'}
                 </Button>
               </div>
             </CardContent>

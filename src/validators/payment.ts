@@ -40,6 +40,7 @@ export const executePaymentSchema = z.object({
   amountPaid: z.coerce.number().min(0.01, 'Amount must be positive'),
   tdsDeducted: z.coerce.number().min(0).default(0),
   paymentProof: z.string().optional(),
+  invoiceAttachment: z.string().url().optional(),
   remarks: z.string().max(1000).optional(),
 })
 

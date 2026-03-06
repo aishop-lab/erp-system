@@ -15,6 +15,7 @@ export const grnLineItemSchema = z.object({
 export const createGRNSchema = z.object({
   purchaseOrderId: z.string().cuid('Purchase order is required'),
   notes: z.string().max(1000).optional(),
+  closePO: z.boolean().default(false),
   lineItems: z.array(grnLineItemSchema).min(1, 'At least one line item is required'),
 })
 

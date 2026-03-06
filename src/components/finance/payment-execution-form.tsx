@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { Upload, FileText, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,6 +44,10 @@ export function PaymentExecutionForm({ payment }: PaymentExecutionFormProps) {
     tdsDeducted: 0,
     remarks: '',
   })
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
+  const [invoiceUrl, setInvoiceUrl] = useState<string>('')
+  const [uploadingInvoice, setUploadingInvoice] = useState(false)
+  const invoiceInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // Load payment modes from the entity
@@ -57,6 +62,26 @@ export function PaymentExecutionForm({ payment }: PaymentExecutionFormProps) {
   }, [payment.entity, payment.entityId])
 
   const netAmount = form.amountPaid - form.tdsDeducted
+
+  const handleInvoiceUpload = async (file: File) => {
+    setUploadingInvoice(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const ext = file.name.split('.').pop()
+      const path = `payments/${payment.id}/invoice-${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('product-media').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data: { publicUrl } } = supabase.storage.from('product-media').getPublicUrl(path)
+      setInvoiceUrl(publicUrl)
+      setInvoiceFile(file)
+    } catch (error) {
+      console.error('Error uploading invoice:', error)
+      alert('Failed to upload invoice')
+    } finally {
+      setUploadingInvoice(false)
+    }
+  }
 
   const handleSubmit = async () => {
     if (!form.paymentModeId) {
@@ -78,6 +103,7 @@ export function PaymentExecutionForm({ payment }: PaymentExecutionFormProps) {
           transactionReference: form.transactionReference,
           amountPaid: form.amountPaid,
           tdsDeducted: form.tdsDeducted,
+          invoiceAttachment: invoiceUrl || undefined,
           remarks: form.remarks || undefined,
         }),
       })
@@ -228,6 +254,48 @@ export function PaymentExecutionForm({ payment }: PaymentExecutionFormProps) {
                 {netAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
               </span>
             </div>
+          </div>
+
+          {/* Invoice Upload */}
+          <div className="space-y-2">
+            <Label>Invoice Attachment</Label>
+            <input
+              ref={invoiceInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleInvoiceUpload(file)
+              }}
+            />
+            {invoiceFile || invoiceUrl ? (
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm flex-1 truncate">
+                  {invoiceFile?.name || 'Invoice attached'}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setInvoiceFile(null); setInvoiceUrl(''); }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => invoiceInputRef.current?.click()}
+                disabled={uploadingInvoice}
+                className="w-full"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {uploadingInvoice ? 'Uploading...' : 'Upload Invoice (PDF/Image)'}
+              </Button>
+            )}
           </div>
 
           <div className="space-y-2">

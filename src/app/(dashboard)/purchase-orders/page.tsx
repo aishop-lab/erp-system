@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
@@ -9,69 +10,49 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { POList } from '@/components/purchase-orders/po-list'
 
 export default function PurchaseOrdersPage() {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<any[]>([])
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 20,
-    total: 0,
-    totalPages: 0,
-  })
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(20)
   const [filters, setFilters] = useState({
     search: '',
     status: '',
     purchaseType: '',
   })
 
-  const fetchPOs = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.set('page', pagination.page.toString())
-      params.set('pageSize', pagination.pageSize.toString())
-      if (filters.search) params.set('search', filters.search)
-      if (filters.status) params.set('status', filters.status)
-      if (filters.purchaseType) params.set('purchaseType', filters.purchaseType)
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('page', page.toString())
+    params.set('pageSize', pageSize.toString())
+    if (filters.search) params.set('search', filters.search)
+    if (filters.status) params.set('status', filters.status)
+    if (filters.purchaseType) params.set('purchaseType', filters.purchaseType)
+    return `/api/purchase-orders?${params}`
+  }, [page, pageSize, filters])
 
-      const res = await fetch(`/api/purchase-orders?${params}`)
-      if (res.ok) {
-        const result = await res.json()
-        setData(result.data || [])
-        setPagination({
-          page: result.page,
-          pageSize: result.pageSize,
-          total: result.total,
-          totalPages: result.totalPages,
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching purchase orders:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [pagination.page, pagination.pageSize, filters])
+  const { data: result, isLoading: loading, mutate } = useSWR(apiUrl)
 
-  useEffect(() => {
-    fetchPOs()
-  }, [fetchPOs])
-
-  const handlePageChange = (page: number) => {
-    setPagination((prev) => ({ ...prev, page }))
+  const data = result?.data || []
+  const pagination = {
+    page: result?.page || 1,
+    pageSize: result?.pageSize || pageSize,
+    total: result?.total || 0,
+    totalPages: result?.totalPages || 0,
   }
+
+  const handlePageChange = (p: number) => setPage(p)
 
   const handleSearch = (search: string) => {
     setFilters((prev) => ({ ...prev, search }))
-    setPagination((prev) => ({ ...prev, page: 1 }))
+    setPage(1)
   }
 
   const handleStatusFilter = (status: string) => {
     setFilters((prev) => ({ ...prev, status }))
-    setPagination((prev) => ({ ...prev, page: 1 }))
+    setPage(1)
   }
 
   const handleTypeFilter = (purchaseType: string) => {
     setFilters((prev) => ({ ...prev, purchaseType }))
-    setPagination((prev) => ({ ...prev, page: 1 }))
+    setPage(1)
   }
 
   const isEmpty = !loading && data.length === 0 && !filters.search && !filters.status && !filters.purchaseType
@@ -89,7 +70,7 @@ export default function PurchaseOrdersPage() {
           <Button asChild>
             <Link href="/purchase-orders/new">
               <Plus className="mr-2 h-4 w-4" />
-              New Order
+              New PO
             </Link>
           </Button>
         }
@@ -111,8 +92,8 @@ export default function PurchaseOrdersPage() {
       ) : (
         <POList
           data={data}
-          loading={loading}
-          onRefresh={fetchPOs}
+          loading={loading && !result}
+          onRefresh={() => mutate()}
           pagination={pagination}
           onPageChange={handlePageChange}
           onSearch={handleSearch}

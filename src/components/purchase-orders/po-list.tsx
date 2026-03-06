@@ -185,6 +185,7 @@ export function POList({
                 <TableHead>Entity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Created By</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
@@ -224,6 +225,9 @@ export function POList({
                     </TableCell>
                     <TableCell className="text-right">
                       ₹{Number(po.grandTotal).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{po.createdBy?.name || '-'}</span>
                     </TableCell>
                     <TableCell>
                       {format(new Date(po.createdAt), 'dd MMM yyyy')}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   ShoppingCart,
+  ShoppingBag,
   Truck,
   Users,
   Package,
@@ -29,6 +30,7 @@ import type { NavItem } from '@/types'
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
   ShoppingCart,
+  ShoppingBag,
   Truck,
   Users,
   Package,

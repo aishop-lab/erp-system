@@ -316,7 +316,7 @@ export async function getAmazonAnalytics(
 
   const deliveredCount = statMap['delivered']?.cnt || 0
   const cancelledCount = statMap['cancelled']?.cnt || 0
-  const returnedCount = statMap['returned']?.cnt || 0
+  const returnedByStatus = statMap['returned']?.cnt || 0
   const shippedCount = statMap['shipped']?.cnt || 0
 
   const confirmed = totalOrders - cancelledCount
@@ -331,11 +331,19 @@ export async function getAmazonAnalytics(
   const refundCount = Number(refundData[0]?.cnt || 0)
   const refundValue = Number(refundData[0]?.total || 0)
 
+  // Returns should use refund payment data (more accurate than order status)
+  // Amazon often processes returns as refunds without changing order status to 'returned'
+  // Use the higher of: order-status-based returns OR refund-payment-based returns
+  const returnedCount = Math.max(returnedByStatus, refundCount)
+  // Return rate calculated against delivered+shipped orders (not total, as pending/cancelled aren't eligible for returns)
+  const eligibleForReturn = deliveredCount + shippedCount
+  const returnRate = eligibleForReturn > 0 ? (returnedCount / eligibleForReturn) * 100 : 0
+
   return {
     totalOrders,
     deliveryRate: totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0,
     cancellationRate: totalOrders > 0 ? (cancelledCount / totalOrders) * 100 : 0,
-    returnRate: totalOrders > 0 ? (returnedCount / totalOrders) * 100 : 0,
+    returnRate,
     funnel: [
       { stage: 'Total Orders', count: totalOrders, pct: 100 },
       { stage: 'Confirmed', count: confirmed, pct: totalOrders > 0 ? (confirmed / totalOrders) * 100 : 0 },
@@ -349,8 +357,8 @@ export async function getAmazonAnalytics(
     },
     returns: {
       count: returnedCount,
-      rate: totalOrders > 0 ? (returnedCount / totalOrders) * 100 : 0,
-      value: statMap['returned']?.total || 0,
+      rate: returnRate,
+      value: refundValue || statMap['returned']?.total || 0,
     },
     refunds: {
       count: refundCount,

@@ -229,6 +229,7 @@ export async function executePayment(
         tdsDeducted: data.tdsDeducted || 0,
         netAmountPaid: netAmount,
         paymentProof: data.paymentProof,
+        invoiceAttachment: data.invoiceAttachment || undefined,
         executionRemarks: data.remarks,
         executedById: userId,
         executedAt: new Date(),

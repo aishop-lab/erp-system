@@ -474,6 +474,7 @@ export function POForm({ mode = 'create', initialData }: POFormProps) {
                 value={expectedDelivery}
                 onChange={setExpectedDelivery}
                 placeholder="Select delivery date"
+                disablePastDates
               />
             </div>
           </div>

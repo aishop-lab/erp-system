@@ -260,9 +260,22 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Orders', href: '/sales/orders' },
       { title: 'Analytics', href: '/sales/analytics' },
       { title: 'Finance', href: '/sales/finance' },
-      { title: 'Amazon', href: '/sales/amazon' },
       { title: 'Products', href: '/sales/products' },
       { title: 'Platforms', href: '/sales/platforms' },
+    ],
+  },
+  {
+    title: 'Amazon',
+    href: '/amazon',
+    icon: 'ShoppingBag',
+    module: MODULES.SALES,
+    children: [
+      { title: 'Dashboard', href: '/amazon/dashboard' },
+      { title: 'Inventory', href: '/amazon/inventory' },
+      { title: 'FC Inventory', href: '/amazon/fc-inventory' },
+      { title: 'Sales Analytics', href: '/amazon/sales-analytics' },
+      { title: 'Under Production', href: '/amazon/under-production' },
+      { title: 'Sync', href: '/amazon/sync' },
     ],
   },
   {

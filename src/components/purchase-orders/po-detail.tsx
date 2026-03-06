@@ -8,10 +8,11 @@ import {
   ArrowLeft,
   Edit,
   Send,
-  Printer,
+  Download,
   CheckCircle,
   XCircle,
   AlertCircle,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +43,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
+import { FileDown } from 'lucide-react'
 import { PO_STATUS_MAP, PURCHASE_TYPE_LABELS, ENTRY_MODE_LABELS } from '@/lib/constants'
 import { POStatus } from '@/types/enums'
 
@@ -138,8 +140,49 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
     }
   }
 
-  const handlePrint = () => {
-    window.print()
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+
+  const handleDownloadPdf = async () => {
+    setGeneratingPdf(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+
+      const element = document.getElementById('po-detail-content')
+      if (!element) return
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      })
+
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+
+      let heightLeft = pdfHeight
+      let position = 0
+      const pageHeight = pdf.internal.pageSize.getHeight()
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight)
+      heightLeft -= pageHeight
+
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight)
+        heightLeft -= pageHeight
+      }
+
+      pdf.save(`${purchaseOrder.poNumber}.pdf`)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('Failed to generate PDF')
+    } finally {
+      setGeneratingPdf(false)
+    }
   }
 
   const isDraft = purchaseOrder.status === POStatus.DRAFT
@@ -199,13 +242,19 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
             </Button>
           )}
 
-          <Button variant="outline" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print
+          <Button variant="outline" onClick={handleDownloadPdf} disabled={generatingPdf}>
+            {generatingPdf ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Download PDF
           </Button>
         </div>
       </div>
 
+      {/* PO Detail Content (for PDF export) */}
+      <div id="po-detail-content">
       {/* PO Summary Card */}
       <Card>
         <CardHeader>
@@ -435,6 +484,41 @@ export function PODetail({ purchaseOrder, onRefresh, canApprove = false }: PODet
           </div>
         </CardContent>
       </Card>
+
+      {/* Invoice Attachments from Payments */}
+      {purchaseOrder.payments && purchaseOrder.payments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Payment & Invoices</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {purchaseOrder.payments.map((payment: any) => (
+                <div key={payment.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{payment.paymentNumber}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: {payment.status} {payment.amountPaid ? `| Paid: ₹${Number(payment.amountPaid).toFixed(2)}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {payment.invoiceAttachment && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={payment.invoiceAttachment} target="_blank" rel="noopener noreferrer">
+                          <FileDown className="mr-1 h-3 w-3" />
+                          Invoice
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      </div>
 
       {/* Approve Dialog */}
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
