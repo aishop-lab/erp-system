@@ -93,7 +93,7 @@ export default function AmazonAnalyticsPage() {
     )
   }
 
-  if (!data) {
+  if (!data || data.error) {
     return <div className="flex items-center justify-center py-20 text-muted-foreground">Failed to load data</div>
   }
 

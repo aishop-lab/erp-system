@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAmazonAnalytics } from '@/services/analytics-service'
 import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 
@@ -15,6 +15,6 @@ export async function GET(request: NextRequest) {
     return cachedJsonResponse(data, 300)
   } catch (error: any) {
     console.error('Error fetching Amazon analytics:', error)
-    return cachedJsonResponse({ error: error.message }, 0)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
