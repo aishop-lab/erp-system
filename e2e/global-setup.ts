@@ -11,8 +11,12 @@ setup('authenticate', async ({ page }) => {
     fs.mkdirSync(authDir, { recursive: true })
   }
 
-  const email = process.env.TEST_USER_EMAIL || 'himanshu@thevasa.com'
-  const password = process.env.TEST_USER_PASSWORD || 'kumjZ2zdaq.H2C3'
+  const email = process.env.TEST_USER_EMAIL
+  const password = process.env.TEST_USER_PASSWORD
+
+  if (!email || !password) {
+    throw new Error('TEST_USER_EMAIL and TEST_USER_PASSWORD env vars are required')
+  }
 
   // Go to login page
   await page.goto('/login')

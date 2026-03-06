@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+const TEST_EMAIL = process.env.TEST_USER_EMAIL!
+const TEST_PASSWORD = process.env.TEST_USER_PASSWORD!
+
 // These tests run WITHOUT stored auth (they test login itself)
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -7,8 +10,8 @@ test.describe('Authentication & Login', () => {
   test.describe('Login Form', () => {
     test('valid credentials redirect to /dashboard', async ({ page }) => {
       await page.goto('/login')
-      await page.fill('#email', 'himanshu@thevasa.com')
-      await page.fill('#password', 'kumjZ2zdaq.H2C3')
+      await page.fill('#email', TEST_EMAIL)
+      await page.fill('#password', TEST_PASSWORD)
       await page.click('button[type="submit"]')
       await page.waitForURL('**/dashboard', { timeout: 30_000 })
       await expect(page).toHaveURL(/\/dashboard/)
@@ -39,8 +42,8 @@ test.describe('Authentication & Login', () => {
 
     test('button shows "Signing in..." spinner during submission', async ({ page }) => {
       await page.goto('/login')
-      await page.fill('#email', 'himanshu@thevasa.com')
-      await page.fill('#password', 'kumjZ2zdaq.H2C3')
+      await page.fill('#email', TEST_EMAIL)
+      await page.fill('#password', TEST_PASSWORD)
 
       const submitButton = page.locator('button[type="submit"]')
       await expect(submitButton).toHaveText('Sign in')
@@ -80,8 +83,8 @@ test.describe('Authentication & Login', () => {
     test('authenticated user visiting /login redirects to /dashboard', async ({ page }) => {
       // First, log in to establish a session
       await page.goto('/login')
-      await page.fill('#email', 'himanshu@thevasa.com')
-      await page.fill('#password', 'kumjZ2zdaq.H2C3')
+      await page.fill('#email', TEST_EMAIL)
+      await page.fill('#password', TEST_PASSWORD)
       await page.click('button[type="submit"]')
       await page.waitForURL('**/dashboard', { timeout: 30_000 })
 
