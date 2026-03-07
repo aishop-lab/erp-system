@@ -84,7 +84,7 @@ export default function DashboardPage() {
 
   const stats = [
     {
-      title: 'Orders This Month',
+      title: 'PO This Month',
       value: data?.stats.ordersThisMonth ?? 0,
       description: 'Purchase orders created',
       icon: ShoppingCart,
