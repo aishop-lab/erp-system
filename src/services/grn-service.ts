@@ -2,48 +2,81 @@ import { prisma } from '@/lib/prisma'
 import { POStatus, GoodsCondition } from '@prisma/client'
 import type { CreateGRNInput } from '@/validators/grn'
 
-async function getProductDescription(productId: string | null, productType: string | null): Promise<string | null> {
-  if (!productId || !productType) return null
+/**
+ * Batch-fetch product descriptions for multiple items to avoid N+1 queries.
+ * Groups items by productType, runs one query per type, and returns a map.
+ */
+async function batchGetProductDescriptions(
+  items: { productId: string | null; productType: string | null }[]
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  const byType: Record<string, string[]> = {}
 
-  switch (productType) {
-    case 'fabric': {
-      const fabric = await prisma.fabric.findUnique({
-        where: { id: productId },
-        select: { material: true, color: true, design: true, work: true, fabricSku: true },
-      })
-      if (!fabric) return null
-      const parts = [fabric.material, fabric.color, fabric.design, fabric.work].filter(p => p && p !== 'None')
-      return parts.join(' - ') || fabric.fabricSku || null
-    }
-    case 'raw_material': {
-      const rm = await prisma.rawMaterial.findUnique({
-        where: { id: productId },
-        select: { rmType: true, color: true, rmSku: true },
-      })
-      if (!rm) return null
-      const parts = [rm.rmType, rm.color].filter(p => p && p !== 'None')
-      return parts.join(' - ') || rm.rmSku || null
-    }
-    case 'packaging': {
-      const pkg = await prisma.packaging.findUnique({
-        where: { id: productId },
-        select: { pkgType: true, dimensions: true, pkgSku: true },
-      })
-      if (!pkg) return null
-      const parts = [pkg.pkgType, pkg.dimensions].filter(p => p && p !== 'None')
-      return parts.join(' - ') || pkg.pkgSku || null
-    }
-    case 'finished': {
-      const fp = await prisma.finishedProduct.findUnique({
-        where: { id: productId },
-        select: { title: true, size: true, color: true, childSku: true },
-      })
-      if (!fp) return null
-      return fp.title || fp.childSku || null
-    }
-    default:
-      return null
+  for (const item of items) {
+    if (!item.productId || !item.productType) continue
+    if (!byType[item.productType]) byType[item.productType] = []
+    byType[item.productType].push(item.productId)
   }
+
+  const queries: Promise<void>[] = []
+
+  if (byType['fabric']?.length) {
+    queries.push(
+      prisma.fabric.findMany({
+        where: { id: { in: byType['fabric'] } },
+        select: { id: true, material: true, color: true, design: true, work: true, fabricSku: true },
+      }).then(fabrics => {
+        for (const f of fabrics) {
+          const parts = [f.material, f.color, f.design, f.work].filter(p => p && p !== 'None')
+          result.set(f.id, parts.join(' - ') || f.fabricSku || '')
+        }
+      })
+    )
+  }
+
+  if (byType['raw_material']?.length) {
+    queries.push(
+      prisma.rawMaterial.findMany({
+        where: { id: { in: byType['raw_material'] } },
+        select: { id: true, rmType: true, color: true, rmSku: true },
+      }).then(rms => {
+        for (const rm of rms) {
+          const parts = [rm.rmType, rm.color].filter(p => p && p !== 'None')
+          result.set(rm.id, parts.join(' - ') || rm.rmSku || '')
+        }
+      })
+    )
+  }
+
+  if (byType['packaging']?.length) {
+    queries.push(
+      prisma.packaging.findMany({
+        where: { id: { in: byType['packaging'] } },
+        select: { id: true, pkgType: true, dimensions: true, pkgSku: true },
+      }).then(pkgs => {
+        for (const pkg of pkgs) {
+          const parts = [pkg.pkgType, pkg.dimensions].filter(p => p && p !== 'None')
+          result.set(pkg.id, parts.join(' - ') || pkg.pkgSku || '')
+        }
+      })
+    )
+  }
+
+  if (byType['finished']?.length) {
+    queries.push(
+      prisma.finishedProduct.findMany({
+        where: { id: { in: byType['finished'] } },
+        select: { id: true, title: true, childSku: true },
+      }).then(fps => {
+        for (const fp of fps) {
+          result.set(fp.id, fp.title || fp.childSku || '')
+        }
+      })
+    )
+  }
+
+  await Promise.all(queries)
+  return result
 }
 
 export async function generateGRNNumber(tenantId: string) {
@@ -168,24 +201,28 @@ export async function getPOForGRN(poId: string, tenantId: string) {
 
   if (!po) return null
 
+  // Batch-fetch all product descriptions in one go (instead of N+1)
+  const descMap = await batchGetProductDescriptions(
+    po.lineItems.map(item => ({ productId: item.productId, productType: item.productType }))
+  )
+
   // Calculate remaining quantities per line item from GRNLineItem aggregation
-  const lineItems = await Promise.all(po.lineItems.map(async item => {
+  const lineItems = po.lineItems.map(item => {
     const totalReceived = item.grnLineItems.reduce(
       (sum, grn) => sum + grn.receivedQty, 0
     )
-    const productDescription = await getProductDescription(item.productId, item.productType)
     return {
       id: item.id,
       productId: item.productId,
       productType: item.productType,
-      productDescription,
+      productDescription: item.productId ? (descMap.get(item.productId) || null) : null,
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
       taxRate: Number(item.taxRate),
       receivedQty: totalReceived,
       remainingQty: Number(item.quantity) - totalReceived,
     }
-  }))
+  })
 
   return {
     id: po.id,
@@ -557,16 +594,21 @@ export async function getGRNById(id: string, tenantId: string) {
 
   if (!grn) return null
 
-  // Enrich line items with product descriptions
-  const enrichedLineItems = await Promise.all(
-    grn.lineItems.map(async (item) => {
-      const productDescription = await getProductDescription(
-        item.poLineItem?.productId || null,
-        item.poLineItem?.productType || null
-      )
-      return { ...item, productDescription }
-    })
+  // Batch-fetch product descriptions (instead of N+1)
+  const descMap = await batchGetProductDescriptions(
+    grn.lineItems.map(item => ({
+      productId: item.poLineItem?.productId || null,
+      productType: item.poLineItem?.productType || null,
+    }))
   )
+
+  const enrichedLineItems = grn.lineItems.map(item => {
+    const productId = item.poLineItem?.productId || null
+    return {
+      ...item,
+      productDescription: productId ? (descMap.get(productId) || null) : null,
+    }
+  })
 
   // Map user → createdByUser for API consistency
   return {

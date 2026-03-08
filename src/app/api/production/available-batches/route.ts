@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { getAvailableBatches } from '@/services/production-service'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/production/available-batches
 export async function GET(request: NextRequest) {
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await getAvailableBatches(auth.user.tenantId, params)
-    return cachedJsonResponse({ data }, 30)
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('Error fetching available batches:', error)
     return NextResponse.json(

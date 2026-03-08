@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateRequest } from '@/lib/api-auth'
 import { getPOsForReconciliation } from '@/services/reconciliation-service'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/finance/reconciliation - List POs pending reconciliation
 export async function GET(request: NextRequest) {
   try {
@@ -11,8 +13,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const params = {
       search: searchParams.get('search') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      pageSize: parseInt(searchParams.get('pageSize') || '20'),
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20)),
     }
 
     const result = await getPOsForReconciliation(auth.user.tenantId, params)

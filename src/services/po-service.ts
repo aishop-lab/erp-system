@@ -264,7 +264,7 @@ export async function submitForApproval(id: string, tenantId: string) {
   }
 
   return prisma.purchaseOrder.update({
-    where: { id },
+    where: { id, tenantId },
     data: { status: POStatus.pending_approval },
   })
 }
@@ -288,7 +288,7 @@ export async function approvePurchaseOrder(
 
   return prisma.$transaction([
     prisma.purchaseOrder.update({
-      where: { id },
+      where: { id, tenantId },
       data: {
         status: newStatus,
         approvedById: userId,

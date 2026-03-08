@@ -3,8 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { syncAmazonOrders } from '@/lib/amazon/orders'
 import { syncFbaInventory } from '@/lib/amazon/inventory'
+import { syncAmazonReturns } from '@/lib/amazon/returns'
 
-type SyncType = 'inventory' | 'orders' | 'all'
+type SyncType = 'inventory' | 'orders' | 'returns' | 'all'
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
 
     if (syncType === 'inventory' || syncType === 'all') {
       results.inventory = await syncFbaInventory(currentUser.tenantId)
+    }
+
+    if (syncType === 'returns' || syncType === 'all') {
+      const returnsDaysBack = body.options?.returnsDaysBack || 90
+      results.returns = await syncAmazonReturns(currentUser.tenantId, returnsDaysBack)
     }
 
     return NextResponse.json({ success: true, results })

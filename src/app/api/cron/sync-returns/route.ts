@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { syncShopifyOrders } from '@/lib/shopify/orders'
-import { syncShopifyInventory } from '@/lib/shopify/inventory'
+import { syncAmazonReturns } from '@/lib/amazon/returns'
 
 /**
- * Cron job: Sync Shopify orders and inventory every 4 hours.
- * Triggered by Vercel Cron.
+ * Cron job: Sync returns from Amazon every 4 hours.
+ * Uses the Reports API to get actual return data since
+ * the Orders API doesn't have a "Returned" status.
  */
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error('CRON_SECRET env var is not configured')
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
   }
   const authHeader = request.headers.get('authorization')
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const platforms = await prisma.salesPlatform.findMany({
-      where: { name: 'shopify', isActive: true },
+      where: { name: 'amazon', isActive: true },
       select: { tenantId: true },
     })
 
@@ -28,13 +27,8 @@ export async function GET(request: NextRequest) {
 
     for (const platform of platforms) {
       try {
-        const ordersResult = await syncShopifyOrders(platform.tenantId, 3)
-        const inventoryResult = await syncShopifyInventory(platform.tenantId)
-        results.push({
-          tenantId: platform.tenantId,
-          orders: { status: ordersResult.status, processed: ordersResult.recordsProcessed },
-          inventory: { status: inventoryResult.status, processed: inventoryResult.recordsProcessed },
-        })
+        const result = await syncAmazonReturns(platform.tenantId, 90)
+        results.push({ tenantId: platform.tenantId, ...result })
       } catch (err: any) {
         results.push({ tenantId: platform.tenantId, status: 'failed', errorMessage: err.message })
       }
@@ -42,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, results })
   } catch (error: any) {
-    console.error('Cron sync-shopify error:', error)
+    console.error('Cron sync-returns error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

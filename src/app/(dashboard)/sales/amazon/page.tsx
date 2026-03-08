@@ -87,9 +87,10 @@ export default function AmazonAnalyticsPage() {
   if (dateRange.startDate) params.set('startDate', dateRange.startDate)
   if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-  const { data, isLoading: loading } = useSWR(`/api/sales/amazon?${params}`, fetcher, {
+  const { data, isLoading: loading, isValidating } = useSWR(`/api/sales/amazon?${params}`, fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 60_000,
+    dedupingInterval: 10_000,
+    keepPreviousData: false,
   })
 
   const fmt = (n: number) =>
@@ -101,7 +102,7 @@ export default function AmazonAnalyticsPage() {
     return n.toFixed(0)
   }
 
-  if (loading) {
+  if (loading || (!data && isValidating)) {
     return (
       <div className="space-y-6">
         <PageHeader title="Amazon Deep Dive" description="Order funnel, cancellations, returns, and fulfillment analysis" />
@@ -238,6 +239,12 @@ export default function AmazonAnalyticsPage() {
               <Badge variant="secondary" className="ml-1.5 text-xs">{fbaWarehouses.length} FC</Badge>
             )}
           </TabsTrigger>
+          {data.businessMetrics && (
+            <TabsTrigger value="asin-performance">
+              ASIN Performance
+              <Badge variant="secondary" className="ml-1.5 text-xs">{data.businessMetrics.totalAsins}</Badge>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ─── OVERVIEW TAB ─── */}
@@ -959,6 +966,118 @@ export default function AmazonAnalyticsPage() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ─── ASIN PERFORMANCE TAB ─── */}
+        {data.businessMetrics && (
+          <TabsContent value="asin-performance" className="space-y-6 mt-4">
+            {/* Summary Cards */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <Card className="border-l-4 border-l-blue-500">
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Total Glance Views</p>
+                  <p className="text-2xl font-bold">{data.businessMetrics.totalGlanceViews.toLocaleString()}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-green-500">
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Units Shipped</p>
+                  <p className="text-2xl font-bold">{data.businessMetrics.totalUnitsShipped.toLocaleString()}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-violet-500">
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
+                  <p className="text-2xl font-bold">{fmt(data.businessMetrics.totalSales)}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-amber-500">
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Conversion Rate</p>
+                  <p className="text-2xl font-bold">{data.businessMetrics.avgConversionRate.toFixed(2)}%</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Avg Selling Price</p>
+                  <p className="text-xl font-bold">{fmt(data.businessMetrics.avgSellingPrice)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Total ASINs</p>
+                  <p className="text-xl font-bold">{data.businessMetrics.totalAsins.toLocaleString()}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-xs font-medium text-muted-foreground">Available Inventory</p>
+                  <p className="text-xl font-bold">{data.businessMetrics.totalAvailableInventory.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">units across all ASINs</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* ASIN Table */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">
+                  Top ASINs by Sales
+                  {data.businessMetrics.reportDate && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      Data from {new Date(data.businessMetrics.reportDate).toLocaleDateString('en-IN')}
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[600px] overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b-2">
+                        <TableHead className="font-semibold">#</TableHead>
+                        <TableHead className="font-semibold min-w-[250px]">Product</TableHead>
+                        <TableHead className="text-right font-semibold">Glance Views</TableHead>
+                        <TableHead className="text-right font-semibold">Conv. %</TableHead>
+                        <TableHead className="text-right font-semibold">Units Shipped</TableHead>
+                        <TableHead className="text-right font-semibold">Avg Price</TableHead>
+                        <TableHead className="text-right font-semibold">Sales</TableHead>
+                        <TableHead className="text-right font-semibold">Inventory</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.businessMetrics.topAsins.map((a: any, i: number) => (
+                        <TableRow key={a.asin} className={i % 2 === 0 ? 'bg-muted/30' : ''}>
+                          <TableCell className="py-2 text-muted-foreground text-xs">{i + 1}</TableCell>
+                          <TableCell className="py-2">
+                            <div>
+                              <p className="text-sm font-medium leading-tight truncate max-w-[350px]">
+                                {a.itemName || a.asin}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{a.asin}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 text-right tabular-nums">{a.glanceViews.toLocaleString()}</TableCell>
+                          <TableCell className={`py-2 text-right tabular-nums ${a.conversionRate >= 2 ? 'text-green-600 font-semibold' : a.conversionRate >= 1 ? 'text-amber-600' : 'text-red-500'}`}>
+                            {a.conversionRate.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="py-2 text-right tabular-nums font-medium">{a.unitsShipped.toLocaleString()}</TableCell>
+                          <TableCell className="py-2 text-right tabular-nums">{fmt(a.avgSellingPrice)}</TableCell>
+                          <TableCell className="py-2 text-right tabular-nums font-semibold">{fmt(a.salesAmount)}</TableCell>
+                          <TableCell className={`py-2 text-right tabular-nums ${a.availableInventory <= 0 ? 'text-red-600 font-semibold' : a.availableInventory <= 5 ? 'text-amber-600' : ''}`}>
+                            {a.availableInventory.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

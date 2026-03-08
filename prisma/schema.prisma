@@ -58,6 +58,7 @@ model Tenant {
   plSummaries            PlSummary[]
   syncLogs               SyncLog[]
   webhookEvents          WebhookEvent[]
+  amazonBusinessMetrics  AmazonBusinessMetric[]
 
   @@map("tenants")
 }
@@ -533,6 +534,7 @@ model InventoryBatch {
   
   @@map("inventory_batches")
   @@index([tenantId, sku])
+  @@index([tenantId, productType, status])
   @@index([productId])
   @@index([grnId])
 }
@@ -570,6 +572,8 @@ model StockLedger {
   
   @@map("stock_ledger")
   @@index([tenantId, sku])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, productType, createdAt])
   @@index([productId])
   @@index([batchId])
   @@index([referenceType, referenceId])
@@ -1352,6 +1356,8 @@ model SalesOrder {
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
+  @@index([tenantId, platformId, status])
+  @@index([tenantId, status, orderedAt])
   @@index([platformId])
   @@index([status])
   @@index([orderedAt])
@@ -1685,6 +1691,27 @@ model WebhookEvent {
 
   @@index([processed])
   @@map("webhook_events")
+}
+
+model AmazonBusinessMetric {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  asin               String
+  itemName           String?
+  glanceViews        Int      @default(0)
+  conversionRate     Float    @default(0)
+  unitsShipped       Int      @default(0)
+  avgSellingPrice    Float    @default(0)
+  salesAmount        Float    @default(0)
+  availableInventory Int      @default(0)
+  reportDate         DateTime @default(now()) // When this data was pulled from Amazon
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, asin])
+  @@index([tenantId])
+  @@map("amazon_business_metrics")
 }
 
 // ============================================================

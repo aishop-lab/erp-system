@@ -210,6 +210,21 @@ export interface AmazonAnalytics {
     month: string; total: number; delivered: number; cancelled: number;
     returned: number; revenue: number
   }[]
+  businessMetrics: {
+    totalGlanceViews: number
+    totalUnitsShipped: number
+    totalSales: number
+    totalAsins: number
+    avgConversionRate: number
+    avgSellingPrice: number
+    totalAvailableInventory: number
+    reportDate: string | null
+    topAsins: {
+      asin: string; itemName: string | null; glanceViews: number
+      conversionRate: number; unitsShipped: number; avgSellingPrice: number
+      salesAmount: number; availableInventory: number
+    }[]
+  } | null
   inventory: {
     warehouses: {
       id: string; name: string; code: string | null; isFba: boolean
@@ -473,6 +488,76 @@ export async function getAmazonAnalytics(
     console.error('Error fetching inventory data:', err)
   }
 
+  // Fetch Amazon Business Reports metrics (non-critical)
+  let businessMetrics: AmazonAnalytics['businessMetrics'] = null
+  try {
+    const [metricsAgg, topAsins] = await Promise.all([
+      prisma.$queryRaw<{
+        total_glance_views: string; total_units: string; total_sales: string
+        total_asins: string; avg_conversion: string; avg_price: string
+        total_inventory: string; report_date: string | null
+      }[]>`
+        SELECT
+          COALESCE(SUM("glanceViews"), 0)::text as total_glance_views,
+          COALESCE(SUM("unitsShipped"), 0)::text as total_units,
+          COALESCE(SUM("salesAmount"), 0)::text as total_sales,
+          COUNT(*)::text as total_asins,
+          CASE WHEN SUM("glanceViews") > 0
+            THEN (SUM("unitsShipped")::numeric / SUM("glanceViews")::numeric)
+            ELSE 0 END as avg_conversion,
+          CASE WHEN SUM("unitsShipped") > 0
+            THEN (SUM("salesAmount")::numeric / SUM("unitsShipped")::numeric)
+            ELSE 0 END as avg_price,
+          COALESCE(SUM("availableInventory"), 0)::text as total_inventory,
+          MAX("reportDate")::text as report_date
+        FROM amazon_business_metrics
+        WHERE "tenantId" = ${tenantId}
+      `,
+      prisma.$queryRaw<{
+        asin: string; item_name: string | null; glance_views: string
+        conversion_rate: string; units_shipped: string; avg_selling_price: string
+        sales_amount: string; available_inventory: string
+      }[]>`
+        SELECT
+          asin, "itemName" as item_name, "glanceViews"::text as glance_views,
+          "conversionRate"::text as conversion_rate, "unitsShipped"::text as units_shipped,
+          "avgSellingPrice"::text as avg_selling_price,
+          "salesAmount"::text as sales_amount,
+          "availableInventory"::text as available_inventory
+        FROM amazon_business_metrics
+        WHERE "tenantId" = ${tenantId}
+        ORDER BY "salesAmount" DESC
+        LIMIT 50
+      `,
+    ])
+
+    const agg = metricsAgg[0]
+    if (agg && Number(agg.total_asins) > 0) {
+      businessMetrics = {
+        totalGlanceViews: Number(agg.total_glance_views),
+        totalUnitsShipped: Number(agg.total_units),
+        totalSales: Number(agg.total_sales),
+        totalAsins: Number(agg.total_asins),
+        avgConversionRate: Number(agg.avg_conversion) * 100,
+        avgSellingPrice: Number(agg.avg_price),
+        totalAvailableInventory: Number(agg.total_inventory),
+        reportDate: agg.report_date,
+        topAsins: topAsins.map(a => ({
+          asin: a.asin,
+          itemName: a.item_name,
+          glanceViews: Number(a.glance_views),
+          conversionRate: Number(a.conversion_rate) * 100,
+          unitsShipped: Number(a.units_shipped),
+          avgSellingPrice: Number(a.avg_selling_price),
+          salesAmount: Number(a.sales_amount),
+          availableInventory: Number(a.available_inventory),
+        })),
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching business metrics:', err)
+  }
+
   return {
     totalOrders,
     deliveryRate: totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0,
@@ -516,6 +601,7 @@ export async function getAmazonAnalytics(
       returned: Number(m.returned),
       revenue: Number(m.revenue),
     })),
+    businessMetrics,
     inventory,
   }
 }
@@ -563,6 +649,7 @@ export async function getProductPerformance(
     styleData,
     colorData,
     sizeData,
+    uniqueProductsSold,
   ] = await Promise.all([
     prisma.finishedProduct.count({ where: { tenantId, status: 'active' } }),
 
@@ -675,6 +762,17 @@ export async function getProductPerformance(
         ${dateFilter}
       GROUP BY fp.size
     `,
+
+    // Count unique products sold (was a separate query before)
+    prisma.$queryRaw<{ cnt: string }[]>`
+      SELECT COUNT(DISTINCT soi."finishedProductId")::text as cnt
+      FROM sales_order_items soi
+      JOIN sales_orders so ON soi."orderId" = so.id
+      WHERE so."tenantId" = ${tenantId}
+        AND soi."finishedProductId" IS NOT NULL
+        AND so.status IN ('delivered', 'shipped')
+        ${dateFilter}
+    `,
   ])
 
   const mapProduct = (r: any) => ({
@@ -710,17 +808,6 @@ export async function getProductPerformance(
       if (bi === -1) return -1
       return ai - bi
     })
-
-  // Count unique products sold
-  const uniqueProductsSold = await prisma.$queryRaw<{ cnt: string }[]>`
-    SELECT COUNT(DISTINCT soi."finishedProductId")::text as cnt
-    FROM sales_order_items soi
-    JOIN sales_orders so ON soi."orderId" = so.id
-    WHERE so."tenantId" = ${tenantId}
-      AND soi."finishedProductId" IS NOT NULL
-      AND so.status IN ('delivered', 'shipped')
-      ${dateFilter}
-  `
 
   const actualProductsSold = Number(uniqueProductsSold[0]?.cnt || 0)
   const totalRevenue = topSellers.reduce((sum, t) => sum + t.revenue, 0) || 1

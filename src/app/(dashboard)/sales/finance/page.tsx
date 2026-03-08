@@ -51,9 +51,10 @@ export default function SalesFinancePage() {
   if (dateRange.startDate) params.set('startDate', dateRange.startDate)
   if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-  const { data, isLoading: loading } = useSWR(`/api/sales/finance?${params}`, fetcher, {
+  const { data, error, isLoading: loading, isValidating } = useSWR(`/api/sales/finance?${params}`, fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 60_000,
+    dedupingInterval: 10_000,
+    keepPreviousData: false,
   })
 
   const fmt = (n: number) =>
@@ -66,7 +67,7 @@ export default function SalesFinancePage() {
     return n.toFixed(0)
   }
 
-  if (loading) {
+  if (loading || (!data && isValidating)) {
     return (
       <div className="space-y-6">
         <PageHeader title="Finance Analytics" description="Revenue, COGS estimates, and P&L overview" />
@@ -126,8 +127,18 @@ export default function SalesFinancePage() {
     )
   }
 
-  if (!data) {
-    return <div className="flex items-center justify-center py-20 text-muted-foreground">Failed to load data</div>
+  if (error || !data) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Finance Analytics" description="Revenue, COGS estimates, and P&L overview" />
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+            <p className="text-lg font-medium">Failed to load finance data</p>
+            <p className="mt-1 text-sm">Please try refreshing the page or check back later.</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   const revenueByStatus = [

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { createGRNSchema } from '@/validators/grn'
 import { createGRN, getGRNs } from '@/services/grn-service'
 import { z } from 'zod'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/inventory/grn - List all GRNs with filters
 export async function GET(request: NextRequest) {
@@ -14,13 +16,13 @@ export async function GET(request: NextRequest) {
     const params = {
       search: searchParams.get('search') || undefined,
       poId: searchParams.get('poId') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      pageSize: parseInt(searchParams.get('pageSize') || '20'),
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20)),
     }
 
     const result = await getGRNs(auth.user.tenantId, params)
 
-    return cachedJsonResponse(result, 30)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching GRNs:', error)
     return NextResponse.json(
