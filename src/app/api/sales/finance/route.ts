@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFinanceAnalytics } from '@/services/analytics-service'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { cached } from '@/lib/cache'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest) {
     const data = await cached(cacheKey, 5 * 60 * 1000, () =>
       getFinanceAnalytics(auth.user.tenantId, { startDate, endDate })
     )
-    return cachedJsonResponse(data, 300)
+    return NextResponse.json(data)
   } catch (error: any) {
     console.error('Error fetching finance analytics:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

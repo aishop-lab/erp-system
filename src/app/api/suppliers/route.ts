@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
       isActive: searchParams.get('isActive') === 'true' ? true :
                 searchParams.get('isActive') === 'false' ? false : undefined,
       purchaseType: searchParams.get('purchaseType') || undefined,
-      page: searchParams.get('page') ? parseInt(searchParams.get('page')!) : 1,
-      pageSize: searchParams.get('pageSize') ? parseInt(searchParams.get('pageSize')!) : 10,
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '10') || 10)),
     }
 
     const result = await SupplierService.getAllSuppliers(auth.user.tenantId, filters)

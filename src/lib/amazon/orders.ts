@@ -78,8 +78,16 @@ export async function syncAmazonOrders(
         const orderTotalFromApi = order.order_total ? parseFloat(order.order_total.amount) : 0
 
         if (existing) {
+          // Don't overwrite 'returned' status — the Orders API doesn't track returns,
+          // so re-syncing would incorrectly revert returned orders back to shipped/delivered.
+          const existingOrder = await prisma.salesOrder.findUnique({
+            where: { id: existing.id },
+            select: { status: true, totalAmount: true },
+          })
+          const preserveStatus = existingOrder?.status === 'returned'
+
           const updateData: any = {
-            status: status as any,
+            status: preserveStatus ? undefined : (status as any),
             paymentStatus: mapPaymentStatus(order.order_status),
             fulfillmentStatus: mapFulfillmentStatus(order.order_status),
             shippedAt: order.order_status === 'Shipped' ? new Date(order.last_update_date) : undefined,
@@ -92,10 +100,6 @@ export async function syncAmazonOrders(
             updateData.subtotal = orderTotalFromApi
           } else {
             // Backfill from items if current amount is 0
-            const existingOrder = await prisma.salesOrder.findUnique({
-              where: { id: existing.id },
-              select: { totalAmount: true },
-            })
             if (Number(existingOrder?.totalAmount || 0) === 0) {
               const itemsTotal = await prisma.salesOrderItem.aggregate({
                 where: { orderId: existing.id },

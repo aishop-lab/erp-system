@@ -86,7 +86,7 @@ export class StyleService {
     }
 
     return prisma.style.update({
-      where: { id },
+      where: { id, tenantId },
       data,
     })
   }
@@ -100,7 +100,7 @@ export class StyleService {
     }
 
     return prisma.style.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'inactive' },
     })
   }
@@ -114,7 +114,7 @@ export class StyleService {
     }
 
     return prisma.style.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'active' },
     })
   }
@@ -205,7 +205,7 @@ export class FabricService {
     }
 
     return prisma.fabric.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         supplier: {
@@ -224,7 +224,7 @@ export class FabricService {
     }
 
     return prisma.fabric.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'inactive' },
     })
   }
@@ -310,7 +310,7 @@ export class RawMaterialService {
     }
 
     return prisma.rawMaterial.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         supplier: {
@@ -329,7 +329,7 @@ export class RawMaterialService {
     }
 
     return prisma.rawMaterial.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'inactive' },
     })
   }
@@ -415,7 +415,7 @@ export class PackagingService {
     }
 
     return prisma.packaging.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         supplier: {
@@ -434,7 +434,7 @@ export class PackagingService {
     }
 
     return prisma.packaging.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'inactive' },
     })
   }
@@ -578,7 +578,7 @@ export class FinishedProductService {
     }
 
     return prisma.finishedProduct.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         style: {
@@ -603,7 +603,7 @@ export class FinishedProductService {
     }
 
     return prisma.finishedProduct.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status: 'inactive' },
     })
   }
@@ -639,7 +639,7 @@ export class MediaFileService {
     }
 
     return prisma.mediaFile.delete({
-      where: { id },
+      where: { id, tenantId },
     })
   }
 
@@ -664,7 +664,7 @@ export class MediaFileService {
 
     // Set this file as primary
     return prisma.mediaFile.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isPrimary: true },
     })
   }
@@ -672,7 +672,7 @@ export class MediaFileService {
   static async reorder(ids: string[], tenantId: string) {
     const updates = ids.map((id, index) =>
       prisma.mediaFile.update({
-        where: { id },
+        where: { id, tenantId },
         data: { sortOrder: index },
       })
     )

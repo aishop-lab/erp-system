@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { getSalesOrders } from '@/services/sales-service'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,11 +18,11 @@ export async function GET(request: NextRequest) {
       search: searchParams.get('search') || undefined,
       dateFrom: searchParams.get('dateFrom') || undefined,
       dateTo: searchParams.get('dateTo') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      pageSize: parseInt(searchParams.get('pageSize') || '20'),
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20)),
     })
 
-    return cachedJsonResponse(result, 30)
+    return NextResponse.json(result)
   } catch (error: any) {
     console.error('Error fetching sales orders:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

@@ -183,10 +183,10 @@ export default function SalesAnalyticsPage() {
   if (dateRange.startDate) params.set('startDate', dateRange.startDate)
   if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-  const { data, isLoading: loading } = useSWR(
+  const { data, isLoading: loading, isValidating } = useSWR(
     `/api/sales/dashboard?${params}`,
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+    { revalidateOnFocus: false, dedupingInterval: 10_000, keepPreviousData: false },
   )
 
   // -- Formatters --
@@ -215,7 +215,7 @@ export default function SalesAnalyticsPage() {
 
   // -- Loading --
 
-  if (loading) {
+  if (loading || (!data && isValidating)) {
     return <SkeletonDashboard />
   }
 

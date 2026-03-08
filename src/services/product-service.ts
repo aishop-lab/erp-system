@@ -74,7 +74,7 @@ export async function updateProduct(id: string, tenantId: string, data: UpdatePr
   }
 
   return prisma.product.update({
-    where: { id },
+    where: { id, tenantId },
     data: {
       ...data,
       gstRate: data.gstRate ? data.gstRate : undefined,
@@ -95,7 +95,7 @@ export async function deleteProduct(id: string, tenantId: string) {
   }
 
   return prisma.product.delete({
-    where: { id },
+    where: { id, tenantId },
   })
 }
 

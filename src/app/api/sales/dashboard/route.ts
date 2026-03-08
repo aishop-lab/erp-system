@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSalesDashboard } from '@/services/sales-service'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { cached } from '@/lib/cache'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
       getSalesDashboard(auth.user.tenantId, { startDate, endDate })
     )
 
-    return cachedJsonResponse(dashboard, 120)
+    return NextResponse.json(dashboard)
   } catch (error: any) {
     console.error('Error fetching sales dashboard:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

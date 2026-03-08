@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { createProductionSchema } from '@/validators/production'
 import { getProductions, createProduction } from '@/services/production-service'
 import { ProductionType, ProductionStatus } from '@prisma/client'
 import { z } from 'zod'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/production/orders - List production orders
 export async function GET(request: NextRequest) {
@@ -16,12 +18,12 @@ export async function GET(request: NextRequest) {
       productionType: searchParams.get('productionType') as ProductionType | undefined,
       status: searchParams.get('status') as ProductionStatus | undefined,
       search: searchParams.get('search') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      pageSize: parseInt(searchParams.get('pageSize') || '20'),
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20)),
     }
 
     const result = await getProductions(auth.user.tenantId, params)
-    return cachedJsonResponse(result, 30)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching production orders:', error)
     return NextResponse.json(

@@ -4,8 +4,10 @@ import {
   getPurchaseOrders,
   createPurchaseOrder
 } from '@/services/po-service'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { z } from 'zod'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/purchase-orders - List all purchase orders with filters
 export async function GET(request: NextRequest) {
@@ -18,13 +20,13 @@ export async function GET(request: NextRequest) {
       search: searchParams.get('search') || undefined,
       status: searchParams.get('status') as any || undefined,
       purchaseType: searchParams.get('purchaseType') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      pageSize: parseInt(searchParams.get('pageSize') || '20'),
+      page: Math.max(1, parseInt(searchParams.get('page') || '1') || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20)),
     }
 
     const result = await getPurchaseOrders(auth.user.tenantId, params)
 
-    return cachedJsonResponse(result, 15)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching purchase orders:', error)
     return NextResponse.json(

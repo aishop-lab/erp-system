@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/amazon/inventory
 // Returns inventory comparison: actual (WarehouseStock) vs Amazon FBA inventory
@@ -173,7 +175,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return cachedJsonResponse({
+    return NextResponse.json({
       data: enriched,
       summary: { totalSkus, matching, discrepancies, highPriority },
       filters: {
@@ -181,7 +183,7 @@ export async function GET(request: NextRequest) {
         colors: colorsSet.sort(),
         categories: categoriesSet.sort(),
       },
-    }, 30)
+    })
   } catch (error) {
     console.error('Error fetching Amazon inventory comparison:', error)
     return NextResponse.json(

@@ -80,7 +80,7 @@ export async function authenticateRequest(): Promise<AuthResult> {
 export function cachedJsonResponse(data: unknown, maxAge = 30) {
   return NextResponse.json(data, {
     headers: {
-      'Cache-Control': `private, s-maxage=${maxAge}, stale-while-revalidate=${maxAge * 2}`,
+      'Cache-Control': `private, max-age=${maxAge}, stale-while-revalidate=${maxAge * 2}`,
     },
   })
 }

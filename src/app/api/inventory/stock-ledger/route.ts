@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
+import { authenticateRequest } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/inventory/stock-ledger
 export async function GET(request: NextRequest) {
@@ -19,8 +21,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined
 
     // Pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50))
 
     const where: Record<string, unknown> = {
       tenantId: auth.user.tenantId,
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest) {
       prisma.stockLedger.count({ where }),
     ])
 
-    return cachedJsonResponse({
+    return NextResponse.json({
       data: ledgerEntries,
       pagination: {
         page,
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest) {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
-    }, 30)
+    })
   } catch (error) {
     console.error('Error fetching stock ledger:', error)
     return NextResponse.json(
