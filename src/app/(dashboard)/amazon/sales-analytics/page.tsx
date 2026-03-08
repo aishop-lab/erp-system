@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { subDays, startOfDay, endOfDay } from 'date-fns'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/swr'
 import { PageHeader } from '@/components/shared/page-header'
@@ -130,24 +131,28 @@ function PieTooltipContent({ active, payload }: any) {
 export default function AmazonSalesAnalyticsPage() {
   const [days, setDays] = useState(365)
 
-  const financeParams = days > 0 ? `?days=${days}` : '?days=0'
-  const productsParams = days > 0 ? `?days=${days}` : '?days=0'
-  const amazonParams = days > 0 ? `?days=${days}` : '?days=0'
+  // Build startDate/endDate params from days preset
+  const params = new URLSearchParams()
+  if (days > 0) {
+    params.set('startDate', startOfDay(subDays(new Date(), days)).toISOString())
+    params.set('endDate', endOfDay(new Date()).toISOString())
+  }
+  const qs = params.toString() ? `?${params}` : ''
 
   const { data: financeData, isLoading: financeLoading } = useSWR(
-    `/api/sales/finance${financeParams}`,
+    `/api/sales/finance${qs}`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
   const { data: productsData, isLoading: productsLoading } = useSWR(
-    `/api/sales/products${productsParams}`,
+    `/api/sales/products${qs}`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
   const { data: amazonData, isLoading: amazonLoading } = useSWR(
-    `/api/sales/amazon${amazonParams}`,
+    `/api/sales/amazon${qs}`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
