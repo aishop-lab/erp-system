@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Plus, Eye, Search } from 'lucide-react'
@@ -33,36 +34,26 @@ interface GRNItem {
 }
 
 export default function GRNListPage() {
-  const [data, setData] = useState<GRNItem[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 })
+  const [page, setPage] = useState(1)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      params.set('page', pagination.page.toString())
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    params.set('page', page.toString())
+    return `/api/inventory/grn?${params}`
+  }, [search, page])
 
-      const res = await fetch(`/api/inventory/grn?${params}`)
-      const result = await res.json()
-      setData(result.data || [])
-      setPagination(prev => ({
-        ...prev,
-        total: result.total || 0,
-        totalPages: result.totalPages || 0,
-      }))
-    } catch (error) {
-      console.error('Error fetching GRNs:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [search, pagination.page])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data: result, isLoading } = useSWR(apiUrl, (url: string) =>
+    fetch(url).then(res => res.json()),
+    { keepPreviousData: true }
+  )
+  const data = (result?.data || []) as GRNItem[]
+  const pagination = {
+    page,
+    total: result?.total || 0,
+    totalPages: result?.totalPages || 0,
+  }
 
   return (
     <div className="space-y-6">
@@ -84,7 +75,7 @@ export default function GRNListPage() {
         }
       />
 
-      {loading ? (
+      {isLoading && !result ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>
@@ -111,7 +102,7 @@ export default function GRNListPage() {
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value)
-                  setPagination(prev => ({ ...prev, page: 1 }))
+                  setPage(1)
                 }}
                 className="pl-9"
               />
@@ -171,22 +162,22 @@ export default function GRNListPage() {
           {pagination.totalPages > 1 && (
             <div className="flex justify-between items-center">
               <div className="text-sm text-muted-foreground">
-                Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
+                Page {page} of {pagination.totalPages} ({pagination.total} total)
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={pagination.page === 1}
-                  onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
                 >
                   Previous
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={pagination.page === pagination.totalPages}
-                  onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                  disabled={page === pagination.totalPages}
+                  onClick={() => setPage(p => p + 1)}
                 >
                   Next
                 </Button>

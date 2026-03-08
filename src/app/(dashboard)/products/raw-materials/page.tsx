@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { Plus, Search, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,26 +30,12 @@ interface RawMaterial {
 }
 
 export default function RawMaterialsPage() {
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isLoading } = useSWR('/api/product-info/raw-materials', (url: string) =>
+    fetch(url).then(res => res.json()).then(d => d.rawMaterials as RawMaterial[]),
+    { keepPreviousData: true }
+  )
+  const rawMaterials = data ?? []
   const [searchTerm, setSearchTerm] = useState('')
-
-  useEffect(() => {
-    fetchRawMaterials()
-  }, [])
-
-  const fetchRawMaterials = async () => {
-    try {
-      const response = await fetch('/api/product-info/raw-materials')
-      if (!response.ok) throw new Error('Failed to fetch')
-      const data = await response.json()
-      setRawMaterials(data.rawMaterials)
-    } catch (error) {
-      console.error('Error fetching raw materials:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const filteredMaterials = rawMaterials.filter(
     (rm) =>
@@ -96,7 +83,7 @@ export default function RawMaterialsPage() {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading && !data ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>

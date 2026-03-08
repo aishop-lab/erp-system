@@ -470,7 +470,8 @@ CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Beare
 
 ### 2026-02-12 (later)
 - **Dual Pricing for Finished Products**
-- SupplierPricing model → polymorphic (productId + productType as plain strings, no FK to Product)
+- SupplierPricing model → polymorphic (productId +
+ productType as plain strings, no FK to Product)
 - Added `tenantId`, `jobWorkRate`, `directPurchaseRate` fields; `unitPrice` now optional
 - Unique constraint: `[tenantId, supplierId, productId, productType]`
 - Finished lookup API returns both `jobWorkRate` and `directPurchaseRate`

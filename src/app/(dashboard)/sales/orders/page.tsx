@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { PageHeader } from '@/components/shared/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -49,39 +50,37 @@ interface OrdersResponse {
 }
 
 export default function SalesOrdersPage() {
-  const [data, setData] = useState<OrdersResponse | null>(null)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<string>('all')
   const [platformId, setPlatformId] = useState<string>('all')
   const [page, setPage] = useState(1)
-  const [platforms, setPlatforms] = useState<any[]>([])
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true)
+  // Debounce search
+  const searchTimer = useMemo(() => {
+    let timer: NodeJS.Timeout
+    return (value: string) => {
+      setSearch(value)
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        setDebouncedSearch(value)
+        setPage(1)
+      }, 300)
+    }
+  }, [])
+
+  const ordersUrl = useMemo(() => {
     const params = new URLSearchParams()
     params.set('page', String(page))
     params.set('pageSize', '20')
-    if (search) params.set('search', search)
+    if (debouncedSearch) params.set('search', debouncedSearch)
     if (status !== 'all') params.set('status', status)
     if (platformId !== 'all') params.set('platformId', platformId)
+    return `/api/sales/orders?${params}`
+  }, [page, debouncedSearch, status, platformId])
 
-    const res = await fetch(`/api/sales/orders?${params}`)
-    const json = await res.json()
-    setData(json)
-    setLoading(false)
-  }, [page, search, status, platformId])
-
-  useEffect(() => {
-    fetchOrders()
-  }, [fetchOrders])
-
-  useEffect(() => {
-    fetch('/api/sales/platforms')
-      .then(r => r.json())
-      .then(setPlatforms)
-      .catch(() => {})
-  }, [])
+  const { data, isLoading: loading } = useSWR<OrdersResponse>(ordersUrl)
+  const { data: platforms } = useSWR<any[]>('/api/sales/platforms')
 
   const formatCurrency = (amount: string | number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -98,11 +97,6 @@ export default function SalesOrdersPage() {
       month: 'short',
       year: 'numeric',
     })
-  }
-
-  const handleSearch = (value: string) => {
-    setSearch(value)
-    setPage(1)
   }
 
   const exportCSV = () => {
@@ -152,7 +146,7 @@ export default function SalesOrdersPage() {
               <Input
                 placeholder="Search by order #, customer..."
                 value={search}
-                onChange={e => handleSearch(e.target.value)}
+                onChange={e => searchTimer(e.target.value)}
                 className="pl-9 h-9"
               />
             </div>
@@ -173,7 +167,7 @@ export default function SalesOrdersPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Platforms</SelectItem>
-                {platforms.map((p: any) => (
+                {(platforms || []).map((p: any) => (
                   <SelectItem key={p.id} value={p.id}>{p.displayName}</SelectItem>
                 ))}
               </SelectContent>
@@ -200,7 +194,7 @@ export default function SalesOrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {loading && !data ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
                       {Array.from({ length: 8 }).map((_, j) => (

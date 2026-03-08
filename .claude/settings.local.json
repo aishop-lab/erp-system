@@ -7,7 +7,12 @@
       "Bash(npm run build:*)",
       "Bash(set:*)",
       "Bash(npm run migrate:products:*)",
-      "Bash(npx cross-env:*)"
+      "Bash(npx cross-env:*)",
+      "Read(//Users/manan/thevasa-erp-migration/source-project/**)",
+      "Bash(npm install)",
+      "Bash(lsof:*)",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "Bash(npx vercel:*)"
     ]
   }
 }

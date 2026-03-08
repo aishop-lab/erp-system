@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { Plus, Search, Pencil, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -27,26 +28,12 @@ interface Style {
 }
 
 export default function StylesPage() {
-  const [styles, setStyles] = useState<Style[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isLoading } = useSWR('/api/product-info/styles', (url: string) =>
+    fetch(url).then(res => res.json()).then(d => d.styles as Style[]),
+    { keepPreviousData: true }
+  )
+  const styles = data ?? []
   const [searchTerm, setSearchTerm] = useState('')
-
-  useEffect(() => {
-    fetchStyles()
-  }, [])
-
-  const fetchStyles = async () => {
-    try {
-      const response = await fetch('/api/product-info/styles')
-      if (!response.ok) throw new Error('Failed to fetch')
-      const data = await response.json()
-      setStyles(data.styles)
-    } catch (error) {
-      console.error('Error fetching styles:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const filteredStyles = styles.filter(
     (style) =>
@@ -87,7 +74,7 @@ export default function StylesPage() {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading && !data ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>

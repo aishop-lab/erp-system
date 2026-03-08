@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useMemo, Fragment } from 'react'
+import useSWR from 'swr'
 import { format } from 'date-fns'
 import {
   Search,
@@ -72,34 +73,20 @@ const PRODUCT_TYPES = [
 ]
 
 export default function StockOverviewPage() {
-  const [data, setData] = useState<StockItem[]>([])
-  const [summary, setSummary] = useState<Summary | null>(null)
-  const [loading, setLoading] = useState(true)
   const [productType, setProductType] = useState('')
   const [search, setSearch] = useState('')
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (productType) params.set('productType', productType)
-      if (search) params.set('search', search)
-
-      const res = await fetch(`/api/inventory/stock-overview?${params}`)
-      const result = await res.json()
-      setData(result.data || [])
-      setSummary(result.summary || null)
-    } catch (error) {
-      console.error('Error fetching stock overview:', error)
-    } finally {
-      setLoading(false)
-    }
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    if (productType) params.set('productType', productType)
+    if (search) params.set('search', search)
+    return `/api/inventory/stock-overview?${params}`
   }, [productType, search])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data: result, isLoading: loading } = useSWR<{ data: StockItem[]; summary: Summary }>(apiUrl)
+  const data = result?.data || []
+  const summary = result?.summary || null
 
   const toggleRow = (sku: string) => {
     setExpandedRows(prev => {
@@ -301,7 +288,7 @@ export default function StockOverviewPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {loading && !result ? (
             <div className="flex justify-center py-12">
               <LoadingSpinner />
             </div>

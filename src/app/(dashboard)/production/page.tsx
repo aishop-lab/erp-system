@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { format } from 'date-fns'
 import { Factory, Truck, Package, ArrowRight, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,31 +21,11 @@ import { LoadingSpinner } from '@/components/shared/loading-spinner'
 import { PRODUCTION_STATUS_MAP, PO_STATUS_MAP } from '@/lib/constants'
 
 export default function ProductionDashboard() {
-  const [productions, setProductions] = useState<any[]>([])
-  const [jobWorkPOs, setJobWorkPOs] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [prodRes, jwRes] = await Promise.all([
-        fetch('/api/production/orders?pageSize=50'),
-        fetch('/api/production/job-work/eligible-pos'),
-      ])
-      const prodData = await prodRes.json()
-      const jwData = await jwRes.json()
-      setProductions(prodData.data || [])
-      setJobWorkPOs(jwData.data || [])
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data: prodData, isLoading: prodLoading } = useSWR('/api/production/orders?pageSize=50')
+  const { data: jwData, isLoading: jwLoading } = useSWR('/api/production/job-work/eligible-pos')
+  const productions: any[] = prodData?.data || []
+  const jobWorkPOs: any[] = jwData?.data || []
+  const loading = (prodLoading && !prodData) || (jwLoading && !jwData)
 
   const inHouseStats = {
     total: productions.filter(p => p.productionType === 'in_house').length,

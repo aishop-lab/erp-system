@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { Plus, Search, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,26 +35,10 @@ interface FinishedProduct {
 }
 
 export default function FinishedProductsPage() {
-  const [products, setProducts] = useState<FinishedProduct[]>([])
-  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const { data, isLoading: loading } = useSWR<{ products: FinishedProduct[] }>('/api/product-info/finished')
 
-  useEffect(() => {
-    fetchProducts()
-  }, [])
-
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('/api/product-info/finished')
-      if (!response.ok) throw new Error('Failed to fetch')
-      const data = await response.json()
-      setProducts(data.products)
-    } catch (error) {
-      console.error('Error fetching finished products:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const products = data?.products || []
 
   const filteredProducts = products.filter(
     (product) =>
@@ -103,7 +88,7 @@ export default function FinishedProductsPage() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && !data ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>

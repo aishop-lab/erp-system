@@ -210,6 +210,24 @@ export interface AmazonAnalytics {
     month: string; total: number; delivered: number; cancelled: number;
     returned: number; revenue: number
   }[]
+  inventory: {
+    warehouses: {
+      id: string; name: string; code: string | null; isFba: boolean
+      totalSkus: number; totalQtyOnHand: number; totalQtyReserved: number
+      availableQty: number
+    }[]
+    totalSkus: number; totalOnHand: number; totalReserved: number; totalAvailable: number
+    lowStockCount: number; outOfStockCount: number
+    stockByWarehouse: {
+      warehouseId: string; warehouseName: string; isFba: boolean
+      sku: string; productName: string | null; qtyOnHand: number
+      qtyReserved: number; available: number; lastSyncedAt: string | null
+    }[]
+    recentMovements: {
+      id: string; warehouseName: string; sku: string | null; movementType: string
+      quantity: number; notes: string | null; createdAt: string
+    }[]
+  }
 }
 
 export async function getAmazonAnalytics(
@@ -229,6 +247,7 @@ export async function getAmazonAnalytics(
     monthlyTrendData,
     refundData,
     cancellationTrend,
+    returnOrdersData,
   ] = await Promise.all([
     // Status distribution
     prisma.$queryRaw<{ status: string; cnt: string; total: string }[]>`
@@ -281,9 +300,12 @@ export async function getAmazonAnalytics(
       ORDER BY month
     `,
 
-    // Refund data
-    prisma.$queryRaw<{ cnt: string; total: string }[]>`
-      SELECT COUNT(*)::text as cnt, COALESCE(SUM(sp.amount::numeric), 0) as total
+    // Refund data - count unique ORDERS with refund payments (not just payment records)
+    prisma.$queryRaw<{ cnt: string; total: string; unique_orders: string }[]>`
+      SELECT
+        COUNT(*)::text as cnt,
+        COALESCE(SUM(sp.amount::numeric), 0) as total,
+        COUNT(DISTINCT sp."orderId")::text as unique_orders
       FROM sales_payments sp
       JOIN sales_orders so ON sp."orderId" = so.id
       JOIN sales_platforms plat ON so."platformId" = plat.id
@@ -302,6 +324,20 @@ export async function getAmazonAnalytics(
         ${dateFilter}
       GROUP BY TO_CHAR(so."orderedAt", 'YYYY-MM')
       ORDER BY month
+    `,
+
+    // All orders with returns: status='returned'/'refunded' OR has refund payment
+    prisma.$queryRaw<{ cnt: string; total_value: string }[]>`
+      SELECT COUNT(*)::text as cnt, COALESCE(SUM("totalAmount"::numeric), 0) as total_value
+      FROM (
+        SELECT DISTINCT so.id, so."totalAmount"
+        FROM sales_orders so
+        JOIN sales_platforms sp ON so."platformId" = sp.id
+        LEFT JOIN sales_payments pay ON pay."orderId" = so.id AND pay.status = 'refunded'
+        WHERE so."tenantId" = ${tenantId} AND sp.name = 'amazon'
+          AND (so.status IN ('returned', 'refunded') OR pay.id IS NOT NULL)
+          ${dateFilter}
+      ) returned_orders
     `,
   ])
 
@@ -328,16 +364,114 @@ export async function getAmazonAnalytics(
     fulMap[f.channel] = Number(f.cnt)
   }
 
-  const refundCount = Number(refundData[0]?.cnt || 0)
+  const refundPaymentCount = Number(refundData[0]?.cnt || 0)
   const refundValue = Number(refundData[0]?.total || 0)
+  const uniqueRefundOrders = Number(refundData[0]?.unique_orders || 0)
 
-  // Returns should use refund payment data (more accurate than order status)
-  // Amazon often processes returns as refunds without changing order status to 'returned'
-  // Use the higher of: order-status-based returns OR refund-payment-based returns
-  const returnedCount = Math.max(returnedByStatus, refundCount)
+  // Return rate: count unique orders that are returned/refunded OR have refund payments
+  // This captures Amazon returns accurately since many returns are processed as refunds
+  // without changing order status to 'returned'
+  const returnedCount = Number(returnOrdersData[0]?.cnt || 0)
+  const returnedValue = Number(returnOrdersData[0]?.total_value || 0)
   // Return rate calculated against delivered+shipped orders (not total, as pending/cancelled aren't eligible for returns)
   const eligibleForReturn = deliveredCount + shippedCount
   const returnRate = eligibleForReturn > 0 ? (returnedCount / eligibleForReturn) * 100 : 0
+
+  // Fetch inventory data (non-critical, don't let it crash the whole response)
+  let inventory: AmazonAnalytics['inventory'] = {
+    warehouses: [], totalSkus: 0, totalOnHand: 0, totalReserved: 0, totalAvailable: 0,
+    lowStockCount: 0, outOfStockCount: 0, stockByWarehouse: [], recentMovements: [],
+  }
+  try {
+    const [warehouseData, stockData, movementData, stockStats] = await Promise.all([
+      prisma.$queryRaw<{
+        id: string; name: string; code: string | null; is_fba: boolean
+        total_skus: string; total_on_hand: string; total_reserved: string
+      }[]>`
+        SELECT
+          sw.id, sw.name, sw.code, sw."isFba" as is_fba,
+          COUNT(DISTINCT ws.sku)::text as total_skus,
+          COALESCE(SUM(ws."qtyOnHand"), 0)::text as total_on_hand,
+          COALESCE(SUM(ws."qtyReserved"), 0)::text as total_reserved
+        FROM sales_warehouses sw
+        LEFT JOIN warehouse_stocks ws ON ws."warehouseId" = sw.id
+        WHERE sw."tenantId" = ${tenantId} AND sw."isActive" = true
+        GROUP BY sw.id, sw.name, sw.code, sw."isFba"
+        ORDER BY sw."isFba" DESC, sw.name
+      `,
+      prisma.$queryRaw<{
+        warehouse_id: string; warehouse_name: string; is_fba: boolean
+        sku: string; product_name: string | null; qty_on_hand: string
+        qty_reserved: string; last_synced_at: string | null
+      }[]>`
+        SELECT
+          sw.id as warehouse_id, sw.name as warehouse_name, sw."isFba" as is_fba,
+          ws.sku, fp.title as product_name,
+          ws."qtyOnHand"::text as qty_on_hand,
+          ws."qtyReserved"::text as qty_reserved,
+          ws."lastSyncedAt"::text as last_synced_at
+        FROM warehouse_stocks ws
+        JOIN sales_warehouses sw ON ws."warehouseId" = sw.id
+        LEFT JOIN finished_products fp ON ws."finishedProductId" = fp.id
+        WHERE sw."tenantId" = ${tenantId} AND sw."isActive" = true
+        ORDER BY sw."isFba" DESC, ws."qtyOnHand" DESC
+      `,
+      prisma.$queryRaw<{
+        id: string; warehouse_name: string; sku: string | null; movement_type: string
+        quantity: string; notes: string | null; created_at: string
+      }[]>`
+        SELECT
+          sm.id, sw.name as warehouse_name, sm.sku,
+          sm."movementType" as movement_type, sm.quantity::text,
+          sm.notes, sm."createdAt"::text as created_at
+        FROM sales_stock_movements sm
+        JOIN sales_warehouses sw ON sm."warehouseId" = sw.id
+        WHERE sw."tenantId" = ${tenantId}
+        ORDER BY sm."createdAt" DESC
+        LIMIT 100
+      `,
+      prisma.$queryRaw<{ low_stock: string; out_of_stock: string }[]>`
+        SELECT
+          COUNT(CASE WHEN ws."qtyOnHand" > 0 AND ws."qtyOnHand" <= 5 THEN 1 END)::text as low_stock,
+          COUNT(CASE WHEN ws."qtyOnHand" <= 0 THEN 1 END)::text as out_of_stock
+        FROM warehouse_stocks ws
+        JOIN sales_warehouses sw ON ws."warehouseId" = sw.id
+        WHERE sw."tenantId" = ${tenantId} AND sw."isActive" = true
+      `,
+    ])
+
+    const warehouses = warehouseData.map(w => ({
+      id: w.id, name: w.name, code: w.code, isFba: w.is_fba,
+      totalSkus: Number(w.total_skus),
+      totalQtyOnHand: Number(w.total_on_hand),
+      totalQtyReserved: Number(w.total_reserved),
+      availableQty: Number(w.total_on_hand) - Number(w.total_reserved),
+    }))
+
+    inventory = {
+      warehouses,
+      totalSkus: warehouses.reduce((s, w) => s + w.totalSkus, 0),
+      totalOnHand: warehouses.reduce((s, w) => s + w.totalQtyOnHand, 0),
+      totalReserved: warehouses.reduce((s, w) => s + w.totalQtyReserved, 0),
+      totalAvailable: warehouses.reduce((s, w) => s + w.availableQty, 0),
+      lowStockCount: Number(stockStats[0]?.low_stock || 0),
+      outOfStockCount: Number(stockStats[0]?.out_of_stock || 0),
+      stockByWarehouse: stockData.map(s => ({
+        warehouseId: s.warehouse_id, warehouseName: s.warehouse_name, isFba: s.is_fba,
+        sku: s.sku, productName: s.product_name,
+        qtyOnHand: Number(s.qty_on_hand), qtyReserved: Number(s.qty_reserved),
+        available: Number(s.qty_on_hand) - Number(s.qty_reserved),
+        lastSyncedAt: s.last_synced_at,
+      })),
+      recentMovements: movementData.map(m => ({
+        id: m.id, warehouseName: m.warehouse_name, sku: m.sku,
+        movementType: m.movement_type, quantity: Number(m.quantity),
+        notes: m.notes, createdAt: m.created_at,
+      })),
+    }
+  } catch (err) {
+    console.error('Error fetching inventory data:', err)
+  }
 
   return {
     totalOrders,
@@ -358,12 +492,12 @@ export async function getAmazonAnalytics(
     returns: {
       count: returnedCount,
       rate: returnRate,
-      value: refundValue || statMap['returned']?.total || 0,
+      value: returnedValue || refundValue,
     },
     refunds: {
-      count: refundCount,
+      count: uniqueRefundOrders,
       value: refundValue,
-      avgRefund: refundCount > 0 ? refundValue / refundCount : 0,
+      avgRefund: uniqueRefundOrders > 0 ? refundValue / uniqueRefundOrders : 0,
     },
     fulfillment: {
       afn: fulMap['AFN'] || fulMap['Amazon'] || 0,
@@ -382,6 +516,7 @@ export async function getAmazonAnalytics(
       returned: Number(m.returned),
       revenue: Number(m.revenue),
     })),
+    inventory,
   }
 }
 

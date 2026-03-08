@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import { format } from 'date-fns'
 import {
   ArrowDownIcon,
@@ -49,13 +50,6 @@ interface LedgerEntry {
   batch: { batchNumber: string } | null
 }
 
-interface Pagination {
-  page: number
-  pageSize: number
-  total: number
-  totalPages: number
-}
-
 const MOVEMENT_TYPES = [
   { value: 'grn', label: 'GRN (Goods Receipt)' },
   { value: 'sale', label: 'Sale / Outflow' },
@@ -73,11 +67,8 @@ const PRODUCT_TYPES = [
 ]
 
 export default function StockLedgerPage() {
-  const [data, setData] = useState<LedgerEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1, pageSize: 50, total: 0, totalPages: 0,
-  })
+  const [page, setPage] = useState(1)
+  const pageSize = 50
 
   const [productType, setProductType] = useState('')
   const [movementType, setMovementType] = useState('')
@@ -86,39 +77,32 @@ export default function StockLedgerPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (productType) params.set('productType', productType)
-      if (movementType) params.set('movementType', movementType)
-      if (sku) params.set('sku', sku)
-      if (search) params.set('search', search)
-      if (startDate) params.set('startDate', startDate)
-      if (endDate) params.set('endDate', endDate)
-      params.set('page', pagination.page.toString())
-      params.set('pageSize', pagination.pageSize.toString())
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    if (productType) params.set('productType', productType)
+    if (movementType) params.set('movementType', movementType)
+    if (sku) params.set('sku', sku)
+    if (search) params.set('search', search)
+    if (startDate) params.set('startDate', startDate)
+    if (endDate) params.set('endDate', endDate)
+    params.set('page', page.toString())
+    params.set('pageSize', pageSize.toString())
+    return `/api/inventory/stock-ledger?${params}`
+  }, [productType, movementType, sku, search, startDate, endDate, page, pageSize])
 
-      const res = await fetch(`/api/inventory/stock-ledger?${params}`)
-      const result = await res.json()
-      setData(result.data || [])
-      setPagination(prev => ({
-        ...prev,
-        total: result.pagination?.total || 0,
-        totalPages: result.pagination?.totalPages || 0,
-      }))
-    } catch (error) {
-      console.error('Error fetching stock ledger:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [productType, movementType, sku, search, startDate, endDate, pagination.page, pagination.pageSize])
+  const { data: result, isLoading } = useSWR(apiUrl, (url: string) =>
+    fetch(url).then(res => res.json()),
+    { keepPreviousData: true }
+  )
+  const data = (result?.data || []) as LedgerEntry[]
+  const pagination = {
+    page,
+    pageSize,
+    total: result?.pagination?.total || 0,
+    totalPages: result?.pagination?.totalPages || 0,
+  }
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  const resetPage = () => setPagination(prev => ({ ...prev, page: 1 }))
+  const resetPage = () => setPage(1)
 
   const hasActiveFilters = !!(productType || movementType || sku || search || startDate || endDate)
 
@@ -309,7 +293,7 @@ export default function StockLedgerPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoading && !result ? (
             <div className="flex justify-center py-12">
               <LoadingSpinner />
             </div>
@@ -378,24 +362,24 @@ export default function StockLedgerPage() {
               {pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((pagination.page - 1) * pagination.pageSize) + 1} to{' '}
-                    {Math.min(pagination.page * pagination.pageSize, pagination.total)} of{' '}
+                    Showing {((page - 1) * pageSize) + 1} to{' '}
+                    {Math.min(page * pageSize, pagination.total)} of{' '}
                     {pagination.total} entries
                   </div>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={pagination.page === 1}
-                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                      disabled={page === 1}
+                      onClick={() => setPage(p => p - 1)}
                     >
                       Previous
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={pagination.page === pagination.totalPages}
-                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                      disabled={page === pagination.totalPages}
+                      onClick={() => setPage(p => p + 1)}
                     >
                       Next
                     </Button>

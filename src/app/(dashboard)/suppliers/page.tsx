@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { Plus, Pencil, Power, PowerOff, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -55,13 +56,9 @@ interface SuppliersResponse {
 
 export default function SuppliersPage() {
   const router = useRouter()
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
 
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -71,37 +68,23 @@ export default function SuppliersPage() {
     supplierName: string
   } | null>(null)
 
-  const fetchSuppliers = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      if (statusFilter !== 'all') params.append('isActive', statusFilter)
-      params.append('page', page.toString())
-      params.append('pageSize', '10')
-
-      const response = await fetch(`/api/suppliers?${params.toString()}`)
-      if (!response.ok) throw new Error('Failed to fetch suppliers')
-
-      const data: SuppliersResponse = await response.json()
-      setSuppliers(data.data)
-      setTotalPages(data.totalPages)
-      setTotal(data.total)
-    } catch (error) {
-      console.error('Error fetching suppliers:', error)
-    } finally {
-      setLoading(false)
-    }
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    if (search) params.append('search', search)
+    if (statusFilter !== 'all') params.append('isActive', statusFilter)
+    params.append('page', page.toString())
+    params.append('pageSize', '10')
+    return `/api/suppliers?${params.toString()}`
   }, [search, statusFilter, page])
 
-  useEffect(() => {
-    fetchSuppliers()
-  }, [fetchSuppliers])
+  const { data: result, isLoading: loading, mutate } = useSWR<SuppliersResponse>(apiUrl)
+  const suppliers = result?.data || []
+  const totalPages = result?.totalPages || 1
+  const total = result?.total || 0
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    fetchSuppliers()
   }
 
   const handleStatusChange = async () => {
@@ -117,7 +100,7 @@ export default function SuppliersPage() {
           method: 'POST',
         })
       }
-      fetchSuppliers()
+      mutate()
     } catch (error) {
       console.error('Error changing supplier status:', error)
     }
@@ -176,7 +159,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* Content */}
-      {loading ? (
+      {loading && !result ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>
