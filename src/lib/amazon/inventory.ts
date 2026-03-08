@@ -56,6 +56,17 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
     const amazonClient = await getAmazonClientForTenant(tenantId)
     const inventoryItems = await fetchFbaInventory(amazonClient)
 
+    // Build SKU → finishedProductId lookup from platform_mappings + sales_order_items
+    const skuProductMap = new Map<string, string>()
+    const mappings = await prisma.platformMapping.findMany({
+      where: { tenantId, finishedProductId: { not: null } },
+      select: { externalSku: true, asin: true, finishedProductId: true },
+    })
+    for (const m of mappings) {
+      if (m.externalSku && m.finishedProductId) skuProductMap.set(m.externalSku, m.finishedProductId)
+      if (m.asin && m.finishedProductId) skuProductMap.set(m.asin, m.finishedProductId)
+    }
+
     // Process each item
     for (const item of inventoryItems) {
       recordsProcessed++
@@ -63,6 +74,7 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
         const sku = item.sellerSku || item.seller_sku
         const availableQty = item.fulfillableQuantity ?? item.fulfillable_quantity ?? 0
         const reservedQty = item.reservedQuantity?.totalReservedQuantity ?? item.reserved_quantity ?? 0
+        const finishedProductId = skuProductMap.get(sku) || null
 
         const existing = await prisma.warehouseStock.findFirst({
           where: { warehouseId: fbaWarehouse.id, sku },
@@ -71,7 +83,12 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
         if (existing) {
           await prisma.warehouseStock.update({
             where: { id: existing.id },
-            data: { qtyOnHand: availableQty, qtyReserved: reservedQty, lastSyncedAt: new Date() },
+            data: {
+              qtyOnHand: availableQty,
+              qtyReserved: reservedQty,
+              lastSyncedAt: new Date(),
+              ...(finishedProductId && !existing.finishedProductId ? { finishedProductId } : {}),
+            },
           })
           recordsUpdated++
         } else {
@@ -80,6 +97,7 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
               tenantId,
               warehouseId: fbaWarehouse.id,
               sku,
+              finishedProductId,
               qtyOnHand: availableQty,
               qtyReserved: reservedQty,
               lastSyncedAt: new Date(),

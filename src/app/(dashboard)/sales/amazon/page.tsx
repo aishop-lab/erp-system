@@ -656,7 +656,10 @@ export default function AmazonAnalyticsPage() {
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow className="border-b-2">
                       <TableHead className="font-semibold">SKU</TableHead>
+                      <TableHead className="font-semibold">ASIN</TableHead>
                       <TableHead className="font-semibold">Product</TableHead>
+                      <TableHead className="font-semibold">Color</TableHead>
+                      <TableHead className="font-semibold">Size</TableHead>
                       <TableHead className="font-semibold">Warehouse</TableHead>
                       <TableHead className="text-center font-semibold">Type</TableHead>
                       <TableHead className="text-right font-semibold">On Hand</TableHead>
@@ -668,7 +671,7 @@ export default function AmazonAnalyticsPage() {
                   <TableBody>
                     {(inv?.stockByWarehouse || []).length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={11} className="py-10 text-center text-muted-foreground">
                           No inventory data available
                         </TableCell>
                       </TableRow>
@@ -676,7 +679,10 @@ export default function AmazonAnalyticsPage() {
                       inv.stockByWarehouse.map((s: any, i: number) => (
                         <TableRow key={`${s.warehouseId}-${s.sku}`} className={i % 2 === 0 ? 'bg-muted/30' : ''}>
                           <TableCell className="py-2 font-mono text-xs">{s.sku || '—'}</TableCell>
+                          <TableCell className="py-2 font-mono text-xs text-blue-600">{s.asin || '—'}</TableCell>
                           <TableCell className="py-2 text-sm max-w-[200px] truncate">{s.productName || '—'}</TableCell>
+                          <TableCell className="py-2 text-sm">{s.color || '—'}</TableCell>
+                          <TableCell className="py-2 text-sm">{s.size || '—'}</TableCell>
                           <TableCell className="py-2 text-sm">{s.warehouseName}</TableCell>
                           <TableCell className="py-2 text-center">
                             <Badge variant={s.isFba ? 'default' : 'outline'} className={`text-xs ${s.isFba ? 'bg-blue-600' : ''}`}>
@@ -881,7 +887,10 @@ export default function AmazonAnalyticsPage() {
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow className="border-b-2">
                           <TableHead className="font-semibold">SKU</TableHead>
+                          <TableHead className="font-semibold">ASIN</TableHead>
                           <TableHead className="font-semibold">Product</TableHead>
+                          <TableHead className="font-semibold">Color</TableHead>
+                          <TableHead className="font-semibold">Size</TableHead>
                           <TableHead className="font-semibold">FC</TableHead>
                           <TableHead className="text-right font-semibold">On Hand</TableHead>
                           <TableHead className="text-right font-semibold">Reserved</TableHead>
@@ -892,7 +901,7 @@ export default function AmazonAnalyticsPage() {
                       <TableBody>
                         {fbaStock.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                            <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                               No FBA inventory data available
                             </TableCell>
                           </TableRow>
@@ -900,7 +909,10 @@ export default function AmazonAnalyticsPage() {
                           fbaStock.map((s: any, i: number) => (
                             <TableRow key={`${s.warehouseId}-${s.sku}`} className={i % 2 === 0 ? 'bg-muted/30' : ''}>
                               <TableCell className="py-2 font-mono text-xs">{s.sku || '—'}</TableCell>
+                              <TableCell className="py-2 font-mono text-xs text-blue-600">{s.asin || '—'}</TableCell>
                               <TableCell className="py-2 text-sm max-w-[200px] truncate">{s.productName || '—'}</TableCell>
+                              <TableCell className="py-2 text-sm">{s.color || '—'}</TableCell>
+                              <TableCell className="py-2 text-sm">{s.size || '—'}</TableCell>
                               <TableCell className="py-2 text-sm">{s.warehouseName}</TableCell>
                               <TableCell className={`py-2 text-right tabular-nums font-medium ${s.qtyOnHand <= 0 ? 'text-red-600' : s.qtyOnHand <= 5 ? 'text-orange-600' : ''}`}>
                                 {s.qtyOnHand.toLocaleString()}

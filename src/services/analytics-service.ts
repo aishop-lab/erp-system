@@ -235,8 +235,10 @@ export interface AmazonAnalytics {
     lowStockCount: number; outOfStockCount: number
     stockByWarehouse: {
       warehouseId: string; warehouseName: string; isFba: boolean
-      sku: string; productName: string | null; qtyOnHand: number
-      qtyReserved: number; available: number; lastSyncedAt: string | null
+      sku: string; productName: string | null; asin: string | null
+      color: string | null; size: string | null
+      qtyOnHand: number; qtyReserved: number; available: number
+      lastSyncedAt: string | null
     }[]
     recentMovements: {
       id: string; warehouseName: string; sku: string | null; movementType: string
@@ -416,18 +418,30 @@ export async function getAmazonAnalytics(
       `,
       prisma.$queryRaw<{
         warehouse_id: string; warehouse_name: string; is_fba: boolean
-        sku: string; product_name: string | null; qty_on_hand: string
-        qty_reserved: string; last_synced_at: string | null
+        sku: string; product_name: string | null; asin: string | null
+        color: string | null; size: string | null
+        qty_on_hand: string; qty_reserved: string; last_synced_at: string | null
       }[]>`
         SELECT
           sw.id as warehouse_id, sw.name as warehouse_name, sw."isFba" as is_fba,
-          ws.sku, fp.title as product_name,
+          ws.sku,
+          COALESCE(fp.title, fp2.title) as product_name,
+          COALESCE(pm.asin, pm2.asin,
+            CASE WHEN ws.sku ~ '^B0[A-Z0-9]{8,}$' THEN ws.sku ELSE NULL END
+          ) as asin,
+          COALESCE(fp.color, fp2.color) as color,
+          COALESCE(fp.size, fp2.size) as size,
           ws."qtyOnHand"::text as qty_on_hand,
           ws."qtyReserved"::text as qty_reserved,
           ws."lastSyncedAt"::text as last_synced_at
         FROM warehouse_stocks ws
         JOIN sales_warehouses sw ON ws."warehouseId" = sw.id
         LEFT JOIN finished_products fp ON ws."finishedProductId" = fp.id
+        LEFT JOIN platform_mappings pm ON ws."finishedProductId" = pm."finishedProductId"
+          AND pm."tenantId" = ${tenantId}
+        LEFT JOIN platform_mappings pm2 ON ws.sku = pm2."externalSku"
+          AND pm2."tenantId" = ${tenantId}
+        LEFT JOIN finished_products fp2 ON pm2."finishedProductId" = fp2.id
         WHERE sw."tenantId" = ${tenantId} AND sw."isActive" = true
         ORDER BY sw."isFba" DESC, ws."qtyOnHand" DESC
       `,
@@ -474,6 +488,7 @@ export async function getAmazonAnalytics(
       stockByWarehouse: stockData.map(s => ({
         warehouseId: s.warehouse_id, warehouseName: s.warehouse_name, isFba: s.is_fba,
         sku: s.sku, productName: s.product_name,
+        asin: s.asin, color: s.color, size: s.size,
         qtyOnHand: Number(s.qty_on_hand), qtyReserved: Number(s.qty_reserved),
         available: Number(s.qty_on_hand) - Number(s.qty_reserved),
         lastSyncedAt: s.last_synced_at,
