@@ -274,6 +274,7 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Inventory', href: '/amazon/inventory' },
       { title: 'FC Inventory', href: '/amazon/fc-inventory' },
       { title: 'Sales Analytics', href: '/amazon/sales-analytics' },
+      { title: 'Returns', href: '/amazon/returns' },
       { title: 'Under Production', href: '/amazon/under-production' },
       { title: 'Sync', href: '/amazon/sync' },
     ],

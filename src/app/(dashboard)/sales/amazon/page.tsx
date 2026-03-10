@@ -31,11 +31,23 @@ import {
   AlertTriangle,
   PackageX,
   ArrowUpDown,
+  Undo2,
+  TrendingDown,
+  DollarSign,
+  Timer,
+  RefreshCw,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
   XAxis,
   YAxis,
   Tooltip,
@@ -73,6 +85,17 @@ const MOVEMENT_COLORS: Record<string, string> = {
   fba_sync: 'bg-indigo-100 text-indigo-700',
 }
 
+const REASON_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6',
+  '#8b5cf6', '#ec4899', '#14b8a6', '#64748b', '#d946ef',
+]
+
+const DISPOSITION_COLORS = [
+  '#22c55e', '#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6',
+]
+
+const TIMELINE_BUCKETS_ORDER = ['0-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days']
+
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
 /* ------------------------------------------------------------------ */
@@ -82,15 +105,47 @@ export default function AmazonAnalyticsPage() {
     endDate: endOfDay(new Date()).toISOString(),
   })
   const [activeTab, setActiveTab] = useState('overview')
+  const [syncing, setSyncing] = useState<Record<string, boolean>>({})
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  async function handleSync(syncType: 'orders' | 'inventory' | 'returns') {
+    setSyncing(s => ({ ...s, [syncType]: true }))
+    setSyncMsg(null)
+    try {
+      const res = await fetch('/api/sync/amazon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncType, options: { daysBack: 7 } }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setSyncMsg(`${syncType} sync complete`)
+      } else {
+        setSyncMsg(`Sync failed: ${json.error || 'unknown error'}`)
+      }
+    } catch {
+      setSyncMsg('Sync failed')
+    } finally {
+      setSyncing(s => ({ ...s, [syncType]: false }))
+      setTimeout(() => setSyncMsg(null), 4000)
+    }
+  }
 
   const params = new URLSearchParams()
   if (dateRange.startDate) params.set('startDate', dateRange.startDate)
   if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-  const { data, isLoading: loading } = useSWR(`/api/sales/amazon?${params}`, fetcher, {
+  const { data, isLoading: loading, isValidating } = useSWR(`/api/sales/amazon?${params}`, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
+    keepPreviousData: true,
   })
+
+  const { data: returnsData, isLoading: returnsLoading } = useSWR(
+    activeTab === 'returns' ? `/api/sales/amazon/returns?${params}` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 10_000, keepPreviousData: true }
+  )
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
@@ -101,7 +156,7 @@ export default function AmazonAnalyticsPage() {
     return n.toFixed(0)
   }
 
-  if (loading) {
+  if (!data && loading) {
     return (
       <div className="space-y-6">
         <PageHeader title="Amazon Deep Dive" description="Order funnel, cancellations, returns, and fulfillment analysis" />
@@ -193,7 +248,15 @@ export default function AmazonAnalyticsPage() {
           { label: 'Amazon' },
         ]}
         actions={
-          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          <div className="flex items-center gap-2">
+            {isValidating && !!data && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                Refreshing
+              </span>
+            )}
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          </div>
         }
       />
 
@@ -222,6 +285,45 @@ export default function AmazonAnalyticsPage() {
         })}
       </div>
 
+      {/* Sync Bar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!!syncing['orders']}
+          onClick={() => handleSync('orders')}
+          className="h-8 gap-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${syncing['orders'] ? 'animate-spin' : ''}`} />
+          {syncing['orders'] ? 'Syncing...' : 'Sync Orders'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!!syncing['inventory']}
+          onClick={() => handleSync('inventory')}
+          className="h-8 gap-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${syncing['inventory'] ? 'animate-spin' : ''}`} />
+          {syncing['inventory'] ? 'Syncing...' : 'Sync Inventory'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!!syncing['returns']}
+          onClick={() => handleSync('returns')}
+          className="h-8 gap-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${syncing['returns'] ? 'animate-spin' : ''}`} />
+          {syncing['returns'] ? 'Syncing...' : 'Sync Returns'}
+        </Button>
+        {syncMsg && (
+          <span className={`text-xs ${syncMsg.includes('failed') ? 'text-red-500' : 'text-green-600'}`}>
+            {syncMsg}
+          </span>
+        )}
+      </div>
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -238,6 +340,7 @@ export default function AmazonAnalyticsPage() {
               <Badge variant="secondary" className="ml-1.5 text-xs">{fbaWarehouses.length} FC</Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="returns">Returns</TabsTrigger>
         </TabsList>
 
         {/* ─── OVERVIEW TAB ─── */}
@@ -367,10 +470,10 @@ export default function AmazonAnalyticsPage() {
                   <div className="rounded-lg border bg-card overflow-hidden">
                     <div className="h-1 bg-violet-500" />
                     <div className="p-4 text-center">
-                      <p className="text-3xl font-extrabold text-violet-600">{data.refunds.count}</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">Refund Payments</p>
+                      <p className="text-3xl font-extrabold text-violet-600">{fmt(data.refunds.value)}</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">Refund Value</p>
                       <span className="mt-1.5 inline-block rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-600">
-                        {fmt(data.refunds.value)}
+                        {data.refunds.count} orders
                       </span>
                     </div>
                   </div>
@@ -971,6 +1074,309 @@ export default function AmazonAnalyticsPage() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ─── RETURNS TAB ─── */}
+        <TabsContent value="returns" className="space-y-6 mt-4">
+          {returnsLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          ) : !returnsData || returnsData.summary?.totalReturns === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <PackageX className="h-12 w-12 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No return data available for this period</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card className="border-l-4 border-l-red-500">
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50">
+                        <Undo2 className="h-5 w-5 text-red-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Total Returns</p>
+                        <p className="text-2xl font-bold leading-tight">{returnsData.summary.totalReturns.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">{returnsData.summary.uniqueOrders} unique orders</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-orange-500">
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50">
+                        <TrendingDown className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Return Rate</p>
+                        <p className="text-2xl font-bold leading-tight">{returnsData.summary.returnRate.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-red-500">
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50">
+                        <DollarSign className="h-5 w-5 text-red-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Refund Value</p>
+                        <p className="text-2xl font-bold leading-tight">{fmt(returnsData.summary.totalRefundValue)}</p>
+                        <p className="text-xs text-muted-foreground">avg {fmt(returnsData.summary.totalReturns > 0 ? returnsData.summary.totalRefundValue / returnsData.summary.totalReturns : 0)} per return</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-blue-500">
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50">
+                        <Timer className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Avg Days to Return</p>
+                        <p className="text-2xl font-bold leading-tight">{returnsData.summary.avgDaysToReturn}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Row 2: Reasons + Disposition */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Return Reasons */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Return Reasons</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {returnsData.byReason?.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={Math.max(returnsData.byReason.length * 40, 200)}>
+                        <BarChart data={returnsData.byReason} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" />
+                          <YAxis
+                            type="category"
+                            dataKey="reason"
+                            width={140}
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(v: string) => v.length > 20 ? `${v.slice(0, 20)}...` : v}
+                          />
+                          <Tooltip
+                            content={({ active, payload }: any) => {
+                              if (!active || !payload?.length) return null
+                              const d = payload[0].payload
+                              return (
+                                <div className="rounded-lg border bg-white p-3 shadow-md">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{d.reason}</p>
+                                  <p className="text-sm font-semibold">{d.count} returns ({d.pct}%)</p>
+                                </div>
+                              )
+                            }}
+                          />
+                          <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                            {returnsData.byReason.map((_: any, i: number) => (
+                              <Cell key={i} fill={REASON_COLORS[i % REASON_COLORS.length]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-8">No reason data</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Item Disposition */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Item Disposition</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {returnsData.byDisposition?.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={returnsData.byDisposition}
+                            dataKey="count"
+                            nameKey="disposition"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={120}
+                            label={({ disposition, pct }: any) => `${disposition} (${pct}%)`}
+                            labelLine
+                          >
+                            {returnsData.byDisposition.map((_: any, i: number) => (
+                              <Cell key={i} fill={DISPOSITION_COLORS[i % DISPOSITION_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            content={({ active, payload }: any) => {
+                              if (!active || !payload?.length) return null
+                              const d = payload[0].payload
+                              return (
+                                <div className="rounded-lg border bg-white p-3 shadow-md">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{d.disposition}</p>
+                                  <p className="text-sm font-semibold">{d.count} items ({d.pct}%)</p>
+                                </div>
+                              )
+                            }}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-8">No disposition data</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Return Rate Trend */}
+              {returnsData.trend?.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Return Rate Trend</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={returnsData.trend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+                        <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} unit="%" />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Area yAxisId="left" type="monotone" dataKey="returns" stroke="#ef4444" fill="#ef444420" name="Returns" />
+                        <Area yAxisId="left" type="monotone" dataKey="orders" stroke="#3b82f6" fill="#3b82f620" name="Orders" />
+                        <Area yAxisId="right" type="monotone" dataKey="rate" stroke="#f59e0b" fill="#f59e0b20" name="Return Rate %" />
+                        <Legend />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Row 4: Timeline + Financial */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Return Timeline */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Return Timeline</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {returnsData.timeline ? (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <BarChart
+                          data={TIMELINE_BUCKETS_ORDER.map(bucket => ({
+                            bucket,
+                            count: returnsData.timeline[bucket] || 0,
+                          }))}
+                          margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip
+                            content={({ active, payload }: any) => {
+                              if (!active || !payload?.length) return null
+                              const d = payload[0].payload
+                              return (
+                                <div className="rounded-lg border bg-white p-3 shadow-md">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{d.bucket}</p>
+                                  <p className="text-sm font-semibold">{d.count} returns</p>
+                                </div>
+                              )
+                            }}
+                          />
+                          <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-8">No timeline data</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Monthly Refund Impact */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Monthly Refund Impact</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {returnsData.financialImpact?.monthlyRefunds?.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={returnsData.financialImpact.monthlyRefunds} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => fmtCompact(v)} />
+                          <Tooltip
+                            content={({ active, payload }: any) => {
+                              if (!active || !payload?.length) return null
+                              const d = payload[0].payload
+                              return (
+                                <div className="rounded-lg border bg-white p-3 shadow-md">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{d.month}</p>
+                                  <p className="text-sm font-semibold text-red-600">{fmt(d.amount)}</p>
+                                  <p className="text-xs text-muted-foreground">{d.refunds} returns</p>
+                                </div>
+                              )
+                            }}
+                          />
+                          <Bar dataKey="amount" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-8">No refund data</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Top Returned Products */}
+              {returnsData.byProduct?.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Top Returned Products</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b-2">
+                          <TableHead className="font-semibold">Product</TableHead>
+                          <TableHead className="font-semibold">SKU</TableHead>
+                          <TableHead className="font-semibold">ASIN</TableHead>
+                          <TableHead className="text-right font-semibold">Returns</TableHead>
+                          <TableHead className="font-semibold">Top Reason</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {returnsData.byProduct.map((p: any, i: number) => (
+                          <TableRow key={`${p.sku}-${p.asin}`} className={i % 2 === 0 ? 'bg-muted/30' : ''}>
+                            <TableCell className="py-2.5 font-medium max-w-[250px] truncate">{p.productName || '—'}</TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground font-mono text-xs">{p.sku || '—'}</TableCell>
+                            <TableCell className="py-2.5 text-muted-foreground font-mono text-xs">{p.asin || '—'}</TableCell>
+                            <TableCell className="py-2.5 text-right tabular-nums font-bold">{p.returns}</TableCell>
+                            <TableCell className="py-2.5">
+                              {p.topReason && <Badge variant="secondary">{p.topReason}</Badge>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </TabsContent>
+
       </Tabs>
     </div>
   )

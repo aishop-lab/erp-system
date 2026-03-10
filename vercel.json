@@ -3,6 +3,9 @@
   "functions": {
     "src/app/api/cron/backfill-orders/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/cron/sync-returns/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -17,6 +20,10 @@
     {
       "path": "/api/cron/sync-shopify",
       "schedule": "15 */4 * * *"
+    },
+    {
+      "path": "/api/cron/sync-returns",
+      "schedule": "45 */4 * * *"
     }
   ]
 }

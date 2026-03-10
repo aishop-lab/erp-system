@@ -58,6 +58,8 @@ model Tenant {
   plSummaries            PlSummary[]
   syncLogs               SyncLog[]
   webhookEvents          WebhookEvent[]
+  amazonReturns          AmazonReturn[]
+  amazonBusinessMetrics  AmazonBusinessMetric[]
 
   @@map("tenants")
 }
@@ -1265,6 +1267,7 @@ model SalesPlatform {
   salesWarehouses     SalesWarehouse[]
   syncLogs            SyncLog[]
   webhookEvents       WebhookEvent[]
+  amazonReturns       AmazonReturn[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1349,6 +1352,7 @@ model SalesOrder {
   salesRevenue       SalesRevenue?
   cogsRecords        CogsRecord[]
   platformFees       PlatformFee[]
+  amazonReturns      AmazonReturn[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
@@ -1685,6 +1689,60 @@ model WebhookEvent {
 
   @@index([processed])
   @@map("webhook_events")
+}
+
+model AmazonBusinessMetric {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  asin               String
+  itemName           String?
+  glanceViews        Int      @default(0)
+  conversionRate     Float    @default(0)
+  unitsShipped       Int      @default(0)
+  avgSellingPrice    Float    @default(0)
+  salesAmount        Float    @default(0)
+  availableInventory Int      @default(0)
+  reportDate         DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, asin])
+  @@index([tenantId])
+  @@map("amazon_business_metrics")
+}
+
+model AmazonReturn {
+  id                  String         @id @default(cuid())
+  tenantId            String
+  platformId          String
+  orderId             String?
+  externalOrderId     String
+  sku                 String?
+  asin                String?
+  fnsku               String?
+  productName         String?
+  quantity            Int            @default(1)
+  returnDate          DateTime?
+  returnReason        String?
+  disposition         String?
+  customerComments    String?
+  fulfillmentCenterId String?
+  returnType          String
+  resolution          String?
+  refundAmount        Decimal?       @db.Decimal(12, 2)
+  status              String?
+  createdAt           DateTime       @default(now())
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  platform            SalesPlatform  @relation(fields: [platformId], references: [id])
+  order               SalesOrder?    @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, externalOrderId, sku, returnDate])
+  @@index([tenantId])
+  @@index([returnDate])
+  @@index([returnReason])
+  @@index([orderId])
+  @@map("amazon_returns")
 }
 
 // ============================================================

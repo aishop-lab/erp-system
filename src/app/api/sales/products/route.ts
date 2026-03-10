@@ -13,10 +13,10 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || undefined
 
     const cacheKey = `products:${auth.user.tenantId}:${startDate || ''}:${endDate || ''}`
-    const data = await cached(cacheKey, 5 * 60 * 1000, () =>
+    const data = await cached(cacheKey, 15 * 60 * 1000, () =>
       getProductPerformance(auth.user.tenantId, { startDate, endDate })
     )
-    return cachedJsonResponse(data, 300)
+    return cachedJsonResponse(data, 900)
   } catch (error: any) {
     console.error('Error fetching product performance:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

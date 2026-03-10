@@ -242,6 +242,13 @@ export async function getAmazonAnalytics(
       ? Prisma.sql`AND so."orderedAt" >= ${new Date(opts.startDate)}`
       : Prisma.empty
 
+  // Separate date filter for amazon_returns table (uses ar."returnDate", not so."orderedAt")
+  const arDateFilter = opts.startDate && opts.endDate
+    ? Prisma.sql`AND ar."returnDate" >= ${new Date(opts.startDate)} AND ar."returnDate" <= ${new Date(opts.endDate)}`
+    : opts.startDate
+      ? Prisma.sql`AND ar."returnDate" >= ${new Date(opts.startDate)}`
+      : Prisma.empty
+
   const [
     statusCounts,
     fulfillmentData,
@@ -302,16 +309,16 @@ export async function getAmazonAnalytics(
       ORDER BY month
     `,
 
-    // Refund data - count unique ORDERS with refund payments (not just payment records)
+    // Refund data - count returned/refunded orders and use totalAmount as refund value proxy
     prisma.$queryRaw<{ cnt: string; total: string; unique_orders: string }[]>`
       SELECT
         COUNT(*)::text as cnt,
-        COALESCE(SUM(sp.amount::numeric), 0) as total,
-        COUNT(DISTINCT sp."orderId")::text as unique_orders
-      FROM sales_payments sp
-      JOIN sales_orders so ON sp."orderId" = so.id
+        COALESCE(SUM(so."totalAmount"::numeric), 0) as total,
+        COUNT(*)::text as unique_orders
+      FROM sales_orders so
       JOIN sales_platforms plat ON so."platformId" = plat.id
-      WHERE so."tenantId" = ${tenantId} AND plat.name = 'amazon' AND sp.status = 'refunded'
+      WHERE so."tenantId" = ${tenantId} AND plat.name = 'amazon'
+        AND so.status IN ('returned', 'refunded')
         ${dateFilter}
     `,
 
@@ -371,13 +378,60 @@ export async function getAmazonAnalytics(
   const uniqueRefundOrders = Number(refundData[0]?.unique_orders || 0)
 
   // Return rate: count unique orders that are returned/refunded OR have refund payments
-  // This captures Amazon returns accurately since many returns are processed as refunds
-  // without changing order status to 'returned'
   const returnedCount = Number(returnOrdersData[0]?.cnt || 0)
   const returnedValue = Number(returnOrdersData[0]?.total_value || 0)
-  // Return rate calculated against delivered+shipped orders (not total, as pending/cancelled aren't eligible for returns)
-  const eligibleForReturn = deliveredCount + shippedCount
-  const returnRate = eligibleForReturn > 0 ? (returnedCount / eligibleForReturn) * 100 : 0
+  const refundedCount = statMap['refunded']?.cnt || 0
+  // Eligible = all orders that reached fulfillment (including those later returned/refunded)
+  const eligibleForReturn = deliveredCount + shippedCount + returnedByStatus + refundedCount
+
+  // Use amazon_returns table for accurate return count (non-critical, fallback to status-based count)
+  let accurateReturnCount = returnedCount
+  let accurateReturnValue = returnedValue || refundValue
+  try {
+    const amazonReturnsData = await prisma.$queryRaw<{ cnt: string; total_refund: string }[]>`
+      SELECT
+        COUNT(DISTINCT ar."externalOrderId")::text as cnt,
+        COALESCE(SUM(so."totalAmount"::numeric), 0) as total_refund
+      FROM amazon_returns ar
+      LEFT JOIN sales_orders so ON ar."orderId" = so.id
+      WHERE ar."tenantId" = ${tenantId}
+        ${arDateFilter}
+    `
+    const arCount = Number(amazonReturnsData[0]?.cnt || 0)
+    if (arCount > accurateReturnCount) {
+      accurateReturnCount = arCount
+    }
+    const arRefund = Number(amazonReturnsData[0]?.total_refund || 0)
+    if (arRefund > 0) {
+      accurateReturnValue = arRefund
+    }
+  } catch {}
+  const returnRate = eligibleForReturn > 0 ? (accurateReturnCount / eligibleForReturn) * 100 : 0
+
+  // Delivery rate: count orders delivered within the date range (by deliveredAt, not orderedAt)
+  // This prevents 0% delivery rate for short periods where orders are placed but not yet delivered
+  let accurateDeliveryRate = totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0
+  if (opts.startDate || opts.endDate) {
+    try {
+      const deliveredInPeriod = await prisma.$queryRaw<{ cnt: string; total_orders: string }[]>`
+        SELECT
+          COUNT(CASE WHEN so."deliveredAt" IS NOT NULL THEN 1 END)::text as cnt,
+          COUNT(*)::text as total_orders
+        FROM sales_orders so
+        JOIN sales_platforms sp ON so."platformId" = sp.id
+        WHERE so."tenantId" = ${tenantId} AND sp.name = 'amazon'
+          AND (
+            (so."orderedAt" >= ${new Date(opts.startDate || '2000-01-01')} AND so."orderedAt" <= ${new Date(opts.endDate || new Date().toISOString())})
+            OR (so."deliveredAt" >= ${new Date(opts.startDate || '2000-01-01')} AND so."deliveredAt" <= ${new Date(opts.endDate || new Date().toISOString())})
+          )
+      `
+      const deliveredCnt = Number(deliveredInPeriod[0]?.cnt || 0)
+      const totalInPeriod = Number(deliveredInPeriod[0]?.total_orders || 0)
+      if (totalInPeriod > 0) {
+        accurateDeliveryRate = (deliveredCnt / totalInPeriod) * 100
+      }
+    } catch {}
+  }
 
   // Fetch inventory data (non-critical, don't let it crash the whole response)
   let inventory: AmazonAnalytics['inventory'] = {
@@ -490,7 +544,7 @@ export async function getAmazonAnalytics(
 
   return {
     totalOrders,
-    deliveryRate: totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0,
+    deliveryRate: accurateDeliveryRate,
     cancellationRate: totalOrders > 0 ? (cancelledCount / totalOrders) * 100 : 0,
     returnRate,
     funnel: [
@@ -505,9 +559,9 @@ export async function getAmazonAnalytics(
       monthlyTrend: cancellationTrend.map(c => ({ month: c.month, count: Number(c.cnt) })),
     },
     returns: {
-      count: returnedCount,
+      count: accurateReturnCount,
       rate: returnRate,
-      value: returnedValue || refundValue,
+      value: accurateReturnValue,
     },
     refunds: {
       count: uniqueRefundOrders,

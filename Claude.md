@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-03-06 (Sales Analytics, Amazon Sync, Product Performance)
+> **Last Updated:** 2026-03-11 (Amazon Returns Refund Value, Return Rate Fix, Sync Buttons)
 
 ## Overview
 
@@ -144,6 +144,8 @@ data/                          # CSV files for migration
 - **WarehouseStock** - SKU-level stock per warehouse
 - **SalesStockMovement** - Warehouse stock movements (purchase, sales, transfer, adjustment)
 - **SyncLog** - Tracks sync operations (status, recordsProcessed/Created/Updated/Failed)
+- **AmazonReturn** - Per-item return records from Amazon reports (returnReason, disposition, customerComments, refundAmount, fulfillmentCenterId, returnType fba/mfn); unique on [tenantId, externalOrderId, sku, returnDate]
+- **AmazonBusinessMetric** - ASIN-level metrics (glanceViews, conversionRate, unitsShipped, avgSellingPrice, salesAmount, availableInventory)
 
 ### Future (Schema Ready)
 - ProductAmazon, ProductMyntra, ProductShopify, ProductFlipkart, ProductNykaa
@@ -195,10 +197,10 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | External Vendors | GET `/api/external-vendors/shivaang` |
 | Sales Orders | GET `/api/sales/orders`, GET `orders/[id]`, GET `/api/sales/dashboard` |
 | Sales Platforms | GET `/api/sales/platforms` |
-| Sales Analytics | GET `/api/sales/finance?days=365`, GET `/api/sales/amazon?days=90`, GET `/api/sales/products?days=365` |
+| Sales Analytics | GET `/api/sales/finance?days=365`, GET `/api/sales/amazon?days=90`, GET `/api/sales/products?days=365`, GET `/api/sales/amazon/returns` |
 | Sales Reconciliation | GET `/api/sales/reconciliation` |
 | Sync (Manual) | POST `/api/sync/amazon`, POST `/api/sync/shopify` |
-| Cron | GET `/api/cron/sync-orders`, GET `/api/cron/sync-inventory`, GET `/api/cron/sync-shopify` |
+| Cron | GET `/api/cron/sync-orders`, GET `/api/cron/sync-inventory`, GET `/api/cron/sync-shopify`, GET `/api/cron/sync-returns` |
 
 ---
 
@@ -411,6 +413,7 @@ CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Beare
 - `sync-orders`: `0 */4 * * *` (every 4h) - Amazon orders
 - `sync-inventory`: `30 */4 * * *` (every 4h at :30) - FBA inventory
 - `sync-shopify`: `15 */4 * * *` (every 4h at :15) - Shopify
+- `sync-returns`: `45 */4 * * *` (every 4h at :45) - Amazon returns (FBA + MFN reports)
 
 **Build Notes:**
 - `scripts/` excluded from TypeScript compilation in `tsconfig.json`
@@ -419,6 +422,25 @@ CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Beare
 ---
 
 ## Changelog
+
+### 2026-03-11
+- **Amazon Returns & Dashboard Fixes**
+- Fix: Return rate on Amazon dashboard was showing 8-10% instead of correct 25-30% — `amazon_returns` sub-query was using `so."orderedAt"` alias (no `so` in scope), causing silent SQL error and fallback to status-based count; added separate `arDateFilter` using `ar."returnDate"`
+- Fix: Refund Value was 0 everywhere — `refundAmount` is NULL for all records (Amazon FBA report doesn't include it); now uses `sales_orders.totalAmount` as refund value proxy in both `amazon-returns-service.ts` and `analytics-service.ts`
+- Fix: Monthly Refund Impact chart was blank — `dataKey="refundValue"` but service returns field `"amount"`; corrected
+- Fix: Main dashboard "Refund Payments" card queried `sales_payments WHERE status='refunded'` (0 records); now queries returned/refunded orders; relabelled to "Refund Value"
+- Feature: Added sync bar to Amazon page with Orders, Inventory, Returns buttons (calls `/api/sync/amazon` with syncType)
+- **Data Reality**: `refundAmount` NULL for all 990 amazon_returns rows; 440 returned orders totalling ~₹3.39L
+
+### 2026-03-09
+- **Amazon Returns Analytics (Full Pipeline)**
+- Schema: Added `AmazonReturn` model (per-item return records with reason, disposition, customer comments, refund amount, fulfillment center)
+- Enhanced `sync-returns` cron: now parses ALL fields from Amazon FBA/MFN return reports and upserts into `amazon_returns` table, links to SalesOrder
+- Service: `amazon-returns-service.ts` — `getReturnsAnalytics` with 8 parallel queries (summary, by reason, trend, by product, by disposition, financial impact, timeline, eligible count)
+- API: `GET /api/sales/amazon/returns` with date filters and 5-min cache
+- UI: New Returns tab on Amazon page with 7 sections (KPI cards, return reasons bar chart, disposition pie chart, return rate trend, return timeline, monthly refund impact, top returned products table)
+- Cron: `sync-returns` added to `vercel.json` at `:45 */4 * * *` with 300s maxDuration
+- Fix: Return rate denominator now includes returned/refunded orders in eligible base
 
 ### 2026-03-06
 - **Sales Module & Comprehensive Analytics**
