@@ -391,7 +391,7 @@ export async function getAmazonAnalytics(
     const amazonReturnsData = await prisma.$queryRaw<{ cnt: string; total_refund: string }[]>`
       SELECT
         COUNT(DISTINCT ar."externalOrderId")::text as cnt,
-        COALESCE(SUM(so."totalAmount"::numeric), 0) as total_refund
+        COALESCE(SUM(COALESCE(ar."refundAmount"::numeric, so."totalAmount"::numeric)), 0) as total_refund
       FROM amazon_returns ar
       LEFT JOIN sales_orders so ON ar."orderId" = so.id
       WHERE ar."tenantId" = ${tenantId}

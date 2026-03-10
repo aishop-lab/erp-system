@@ -56,12 +56,12 @@ export async function getReturnsAnalytics(
     timelineResult,
     eligibleOrdersResult,
   ] = await Promise.all([
-    // Query 1 - Summary (refund value from sales_orders.totalAmount for returned orders)
+    // Query 1 - Summary (refundAmount preferred; falls back to sales_orders.totalAmount)
     prisma.$queryRaw<{ total_returns: string; unique_orders: string; total_refund: string; avg_days: number }[]>`
       SELECT
         COALESCE(SUM(ar.quantity), 0)::text as total_returns,
         COUNT(DISTINCT ar."externalOrderId")::text as unique_orders,
-        COALESCE(SUM(so."totalAmount"::numeric), 0)::text as total_refund,
+        COALESCE(SUM(COALESCE(ar."refundAmount"::numeric, so."totalAmount"::numeric)), 0)::text as total_refund,
         COALESCE(AVG(
           CASE WHEN ar."returnDate" IS NOT NULL AND so."orderedAt" IS NOT NULL
             THEN EXTRACT(EPOCH FROM (ar."returnDate" - so."orderedAt")) / 86400
@@ -133,11 +133,11 @@ export async function getReturnsAnalytics(
       ORDER BY COUNT(*) DESC
     `,
 
-    // Query 6 - Monthly refund data (using sales_orders.totalAmount as refund value proxy)
+    // Query 6 - Monthly refund data (refundAmount preferred; falls back to sales_orders.totalAmount)
     prisma.$queryRaw<{ month: string; refunds: string; amount: string }[]>`
       SELECT TO_CHAR(ar."returnDate", 'YYYY-MM') as month,
         COUNT(*)::text as refunds,
-        COALESCE(SUM(so."totalAmount"::numeric), 0)::text as amount
+        COALESCE(SUM(COALESCE(ar."refundAmount"::numeric, so."totalAmount"::numeric)), 0)::text as amount
       FROM amazon_returns ar
       LEFT JOIN sales_orders so ON ar."orderId" = so.id
       WHERE ar."tenantId" = ${tenantId} AND ar."returnDate" IS NOT NULL ${dateFilter}

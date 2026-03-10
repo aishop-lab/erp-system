@@ -127,6 +127,22 @@ export async function syncAmazonReturns(
 
     console.log(`[Amazon Returns] Updated ${ordersUpdated} orders to 'returned' status, ${returnsUpserted} return records upserted`)
 
+    // Backfill refundAmount from sales_orders.totalAmount for any returns missing it
+    try {
+      await prisma.$executeRaw`
+        UPDATE amazon_returns ar
+        SET "refundAmount" = so."totalAmount"::numeric
+        FROM sales_orders so
+        WHERE ar."orderId" = so.id
+          AND ar."tenantId" = ${tenantId}
+          AND ar."refundAmount" IS NULL
+          AND so."totalAmount" IS NOT NULL
+      `
+      console.log(`[Amazon Returns] Backfilled refundAmount from linked orders`)
+    } catch (err: any) {
+      console.warn(`[Amazon Returns] refundAmount backfill failed: ${err.message}`)
+    }
+
     await prisma.syncLog.update({
       where: { id: syncLogId },
       data: {
@@ -216,7 +232,8 @@ async function upsertReturnRecords(
           disposition: data.disposition,
           customerComments: data.customerComments,
           resolution: data.resolution,
-          refundAmount: data.refundAmount,
+          // Only set refundAmount if the report provides one; don't overwrite a previously backfilled value
+          ...(data.refundAmount !== null ? { refundAmount: data.refundAmount } : {}),
           status: data.status,
           quantity: data.quantity,
         },
