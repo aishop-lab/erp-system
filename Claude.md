@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-03-06 (Sales Analytics, Amazon Sync, Product Performance)
+> **Last Updated:** 2026-03-11 (Amazon Returns Refund Value, Return Rate Fix, Sync Buttons)
 
 ## Overview
 
@@ -422,6 +422,15 @@ CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Beare
 ---
 
 ## Changelog
+
+### 2026-03-11
+- **Amazon Returns & Dashboard Fixes**
+- Fix: Return rate on Amazon dashboard was showing 8-10% instead of correct 25-30% — `amazon_returns` sub-query was using `so."orderedAt"` alias (no `so` in scope), causing silent SQL error and fallback to status-based count; added separate `arDateFilter` using `ar."returnDate"`
+- Fix: Refund Value was 0 everywhere — `refundAmount` is NULL for all records (Amazon FBA report doesn't include it); now uses `sales_orders.totalAmount` as refund value proxy in both `amazon-returns-service.ts` and `analytics-service.ts`
+- Fix: Monthly Refund Impact chart was blank — `dataKey="refundValue"` but service returns field `"amount"`; corrected
+- Fix: Main dashboard "Refund Payments" card queried `sales_payments WHERE status='refunded'` (0 records); now queries returned/refunded orders; relabelled to "Refund Value"
+- Feature: Added sync bar to Amazon page with Orders, Inventory, Returns buttons (calls `/api/sync/amazon` with syncType)
+- **Data Reality**: `refundAmount` NULL for all 990 amazon_returns rows; 440 returned orders totalling ~₹3.39L
 
 ### 2026-03-09
 - **Amazon Returns Analytics (Full Pipeline)**
