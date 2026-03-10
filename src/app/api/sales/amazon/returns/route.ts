@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAmazonAnalytics } from '@/services/analytics-service'
+import { getReturnsAnalytics } from '@/services/amazon-returns-service'
 import { authenticateRequest, cachedJsonResponse } from '@/lib/api-auth'
 import { cached } from '@/lib/cache'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,13 +14,13 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || undefined
     const endDate = searchParams.get('endDate') || undefined
 
-    const cacheKey = `amazon:${auth.user.tenantId}:${startDate || ''}:${endDate || ''}`
+    const cacheKey = `amazon-returns:${auth.user.tenantId}:${startDate || ''}:${endDate || ''}`
     const data = await cached(cacheKey, 15 * 60 * 1000, () =>
-      getAmazonAnalytics(auth.user.tenantId, { startDate, endDate })
+      getReturnsAnalytics(auth.user.tenantId, { startDate, endDate })
     )
     return cachedJsonResponse(data, 900)
   } catch (error: any) {
-    console.error('Error fetching Amazon analytics:', error)
+    console.error('Error fetching returns analytics:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

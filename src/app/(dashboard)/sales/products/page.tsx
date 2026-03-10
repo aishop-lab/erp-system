@@ -271,17 +271,26 @@ export default function ProductPerformancePage() {
     endDate: endOfDay(new Date()).toISOString(),
   })
 
+  const [activeTab, setActiveTab] = useState('top-sellers')
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(['top-sellers']))
+
+  function handleTabChange(tab: string) {
+    setActiveTab(tab)
+    setMountedTabs(prev => { const s = new Set(prev); s.add(tab); return s })
+  }
+
   const params = new URLSearchParams()
   if (dateRange.startDate) params.set('startDate', dateRange.startDate)
   if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-  const { data, isLoading: loading } = useSWR(`/api/sales/products?${params}`, fetcher, {
+  const { data, isLoading: loading, isValidating } = useSWR(`/api/sales/products?${params}`, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
+    keepPreviousData: true,
   })
 
   /* Loading skeleton */
-  if (loading) {
+  if (!data && loading) {
     return (
       <div className="space-y-6">
         <PageHeader title="Product Performance" description="Top sellers, style & color analysis, size distribution" />
@@ -310,7 +319,15 @@ export default function ProductPerformancePage() {
           { label: 'Products' },
         ]}
         actions={
-          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          <div className="flex items-center gap-2">
+            {isValidating && !!data && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                Refreshing
+              </span>
+            )}
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          </div>
         }
       />
 
@@ -339,7 +356,7 @@ export default function ProductPerformancePage() {
       </div>
 
       {/* ---- Tabs ---- */}
-      <Tabs defaultValue="top-sellers">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <Card className="mb-4 border-0 bg-muted/40 shadow-none">
           <TabsList className="h-auto w-full justify-start gap-1 bg-transparent p-1.5">
             <TabsTrigger value="top-sellers" className="px-4 py-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">Top Sellers</TabsTrigger>
@@ -352,19 +369,21 @@ export default function ProductPerformancePage() {
 
         {/* -- Top Sellers -- */}
         <TabsContent value="top-sellers">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Top 20 Products by Revenue</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TopSellersTable items={data.topSellers} />
-            </CardContent>
-          </Card>
+          {mountedTabs.has('top-sellers') && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Top 20 Products by Revenue</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <TopSellersTable items={data.topSellers} />
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* -- By Style -- */}
         <TabsContent value="by-style">
-          <div className="space-y-6">
+          {mountedTabs.has('by-style') && <div className="space-y-6">
             {data.byStyle?.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -408,12 +427,12 @@ export default function ProductPerformancePage() {
                 />
               </CardContent>
             </Card>
-          </div>
+          </div>}
         </TabsContent>
 
         {/* -- By Color -- */}
         <TabsContent value="by-color">
-          <div className="space-y-6">
+          {mountedTabs.has('by-color') && <div className="space-y-6">
             {data.byColor?.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -462,12 +481,12 @@ export default function ProductPerformancePage() {
                 />
               </CardContent>
             </Card>
-          </div>
+          </div>}
         </TabsContent>
 
         {/* -- By Size -- */}
         <TabsContent value="by-size">
-          <div className="space-y-6">
+          {mountedTabs.has('by-size') && <div className="space-y-6">
             {data.bySize?.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -510,12 +529,12 @@ export default function ProductPerformancePage() {
                 />
               </CardContent>
             </Card>
-          </div>
+          </div>}
         </TabsContent>
 
         {/* -- Slow Movers -- */}
         <TabsContent value="slow-movers">
-          <Card className="border-red-200">
+          {mountedTabs.has('slow-movers') && <Card className="border-red-200">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-50">
@@ -527,7 +546,7 @@ export default function ProductPerformancePage() {
             <CardContent className="p-0">
               <SlowMoversTable items={data.slowMovers} />
             </CardContent>
-          </Card>
+          </Card>}
         </TabsContent>
       </Tabs>
     </div>
