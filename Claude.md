@@ -1,6 +1,6 @@
 # ERP System - Project Context
 
-> **Last Updated:** 2026-03-11 (Amazon Returns Refund Value, Return Rate Fix, Sync Buttons)
+> **Last Updated:** 2026-03-14 (Amazon Data Accuracy Overhaul — Delivery Rate, Inventory Sync, Sync Timestamps)
 
 ## Overview
 
@@ -199,6 +199,7 @@ const currentUser = await prisma.user.findUnique({ where: { supabaseUserId: auth
 | Sales Platforms | GET `/api/sales/platforms` |
 | Sales Analytics | GET `/api/sales/finance?days=365`, GET `/api/sales/amazon?days=90`, GET `/api/sales/products?days=365`, GET `/api/sales/amazon/returns` |
 | Sales Reconciliation | GET `/api/sales/reconciliation` |
+| Sync Status | GET `/api/sales/sync-status` |
 | Sync (Manual) | POST `/api/sync/amazon`, POST `/api/sync/shopify` |
 | Cron | GET `/api/cron/sync-orders`, GET `/api/cron/sync-inventory`, GET `/api/cron/sync-shopify`, GET `/api/cron/sync-returns` |
 
@@ -384,7 +385,9 @@ const { id } = await params
 - **Service**: `src/services/analytics-service.ts` - 3 functions using `prisma.$queryRaw` with `Prisma.sql` for safe parameterization, `Promise.all()` for parallel queries
 - **Charts**: Recharts (ResponsiveContainer, BarChart, LineChart, AreaChart, PieChart)
 - **Time Filters**: 7d, 30d, 90d, 365d, All time (days=0 removes date filter)
-- **Data Reality**: 4,526 orders (3.22M INR), 203 products, 3,553 delivered, 97% items linked
+- **Data Reality**: 6,513 orders, 203 products, 4,226 delivered (backfilled from shipped), 97% items linked
+- **Amazon Inventory Comparison** (`/amazon/inventory`): SKU-level comparison of actual warehouse vs Amazon FBA quantities, discrepancy priority (high/medium/low), filters (style, color, category), CSV export
+- **Sync Management** (`/amazon/sync`): Manual sync triggers for orders/inventory/returns/Shopify, live last-synced timestamps from SyncLog, sync result details
 
 ### Not Yet Implemented
 - Slice 5: GRN & Inventory - outflow UI, adjustments UI
@@ -422,6 +425,21 @@ CRON_SECRET=...                # Auth for Vercel Cron jobs (Authorization: Beare
 ---
 
 ## Changelog
+
+### 2026-03-14
+- **Amazon Data Accuracy Overhaul**
+- Fix: Delivery rate was ~36% instead of ~62% — root cause: 1,989 orders stuck at `shipped` status (Amazon SP-API has no "Delivered" status). Backfilled 1,065 shipped orders older than 5 days to `delivered`. Reduced analytics inference threshold from 7 to 3 days (Amazon India FBA delivers in 2-5 days). Removed secondary `accurateDeliveryRate` query that checked `deliveredAt IS NOT NULL` (NULL for all historical orders), overriding the correct value.
+- Fix: Inventory sync failing silently — `metadata Json?` column was added to Prisma schema but `prisma db push` was never run. All 50 warehouse_stocks upserts failed every sync cycle. Added column via Supabase Management API.
+- Fix: Cancellation trend graph missing for 7d/30d — was filtering on `COALESCE(cancelledAt, orderedAt)` with custom date range (cancelledAt NULL for historical orders). Changed to standard `orderedAt`-based `dateFilter` consistent with all other queries.
+- Feature: Sync page (`/amazon/sync`) now shows live last-synced timestamps from `sync_logs` table instead of hardcoded schedule text. Added Amazon Returns to the list.
+- Feature: Amazon analytics page sync bar shows "Last: X ago" under each sync button.
+- API: New `GET /api/sales/sync-status` endpoint returns last completed sync timestamps for `amazon_orders`, `fba_inventory`, `amazon_returns`, `shopify_orders`.
+- Auth: `getSession()` → `getUser()` in `api-auth.ts` for server-side verification.
+- Orders sync: Infer delivered from `latest_delivery_date`, fix item totals (Amazon India ItemPrice includes GST), backfill items on update, proper `shippedAt`/`deliveredAt`/`cancelledAt`.
+- Returns sync: Refund backfill divides `totalAmount` by return count per order, polling timeout reduced from 10min to 2min.
+- Cron: Concurrency guards (check for running sync in last 30 min), `maxDuration: 300` for sync routes.
+- Revenue: Exclude cancelled/returned/refunded orders from aggregate query.
+- **Data Reality**: 6,513 total Amazon orders — 4,226 delivered, 931 shipped (recent/in-transit), 474 returned, 456 cancelled, 411 pending
 
 ### 2026-03-11
 - **Amazon Returns & Dashboard Fixes**
