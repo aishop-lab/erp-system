@@ -84,7 +84,7 @@ export async function getReturnsAnalytics(
     // Query 3 - Monthly trend (FULL OUTER JOIN)
     prisma.$queryRaw<{ month: string; returns: string; orders: string }[]>`
       WITH monthly_returns AS (
-        SELECT TO_CHAR(ar."returnDate", 'YYYY-MM') as month, SUM(ar.quantity)::text as returns
+        SELECT TO_CHAR(ar."returnDate", 'YYYY-MM') as month, COUNT(DISTINCT ar."externalOrderId")::text as returns
         FROM amazon_returns ar
         WHERE ar."tenantId" = ${tenantId} AND ar."returnDate" IS NOT NULL ${dateFilter}
         GROUP BY TO_CHAR(ar."returnDate", 'YYYY-MM')
@@ -110,7 +110,7 @@ export async function getReturnsAnalytics(
 
     // Query 4 - Top returned products (top 25)
     prisma.$queryRaw<{ asin: string | null; sku: string | null; product_name: string | null; returns: string; top_reason: string | null }[]>`
-      SELECT ar.asin, ar.sku, ar."productName" as product_name,
+      SELECT ar.asin, ar.sku, MAX(ar."productName") as product_name,
         SUM(ar.quantity)::text as returns,
         (SELECT ar2."returnReason" FROM amazon_returns ar2
          WHERE ar2."tenantId" = ${tenantId}
@@ -119,7 +119,7 @@ export async function getReturnsAnalytics(
         ) as top_reason
       FROM amazon_returns ar
       WHERE ar."tenantId" = ${tenantId} ${dateFilter}
-      GROUP BY ar.asin, ar.sku, ar."productName"
+      GROUP BY ar.asin, ar.sku
       ORDER BY SUM(ar.quantity) DESC
       LIMIT 25
     `,

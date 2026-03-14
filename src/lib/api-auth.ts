@@ -28,18 +28,18 @@ const CACHE_TTL = 300_000 // 5 minutes
 export async function authenticateRequest(): Promise<AuthResult> {
   const supabase = await createClient()
 
-  // Use getSession() (JWT-only, no network call) instead of getUser() (network call).
-  // Middleware already validates the session on every request, so JWT is trustworthy here.
-  const { data: { session } } = await supabase.auth.getSession()
+  // Use getUser() for server-side verification — middleware skips auth for /api/ routes,
+  // so JWT-only getSession() is not secure. The in-memory cache below mitigates the perf cost.
+  const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!authUser) {
     return {
       error: 'Unauthorized',
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     }
   }
 
-  const authUserId = session.user.id
+  const authUserId = authUser.id
 
   // Check in-memory cache
   const cached = userCache.get(authUserId)

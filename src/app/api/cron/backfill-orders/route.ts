@@ -9,10 +9,7 @@ import { syncAmazonOrders } from '@/lib/amazon/orders'
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  const querySecret = request.nextUrl.searchParams.get('secret')
-  const isAuthed = authHeader === `Bearer ${process.env.CRON_SECRET}` ||
-    querySecret === process.env.CRON_SECRET
-  if (!isAuthed) {
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

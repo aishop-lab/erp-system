@@ -1445,6 +1445,7 @@ model WarehouseStock {
   sku               String?
   qtyOnHand         Int             @default(0)
   qtyReserved       Int             @default(0)
+  metadata          Json?
   lastSyncedAt      DateTime?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt

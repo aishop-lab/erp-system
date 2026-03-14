@@ -25,6 +25,7 @@ export async function syncAmazonReturns(
   daysBack = 90
 ): Promise<ReturnsSyncSummary> {
   const startedAt = new Date()
+  const syncStartTime = Date.now()
   let syncLogId = ''
   let recordsProcessed = 0
   let ordersUpdated = 0
@@ -71,21 +72,28 @@ export async function syncAmazonReturns(
     }
 
     // 2. MFN Returns Report (seller-fulfilled)
-    try {
-      const mfnReturns = await downloadReturnReport(
-        amazonClient,
-        'GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE',
-        startDate
-      )
-      const upsertedMfn = await upsertReturnRecords(tenantId, platformId, mfnReturns, 'mfn')
-      returnsUpserted += upsertedMfn
-      for (const row of mfnReturns) {
-        const orderId = row['Order ID'] || row['order-id']
-        if (orderId) returnedOrderIds.add(orderId)
+    // Fix #6: Check remaining time before starting second report
+    const elapsedMs = Date.now() - syncStartTime
+    const remainingMs = (5 * 60 * 1000) - elapsedMs // 5-min maxDuration budget
+    if (remainingMs < 60 * 1000) {
+      console.warn(`[Amazon Returns] Skipping MFN report — only ${Math.round(remainingMs / 1000)}s remaining (need at least 60s)`)
+    } else {
+      try {
+        const mfnReturns = await downloadReturnReport(
+          amazonClient,
+          'GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE',
+          startDate
+        )
+        const upsertedMfn = await upsertReturnRecords(tenantId, platformId, mfnReturns, 'mfn')
+        returnsUpserted += upsertedMfn
+        for (const row of mfnReturns) {
+          const orderId = row['Order ID'] || row['order-id']
+          if (orderId) returnedOrderIds.add(orderId)
+        }
+        console.log(`[Amazon Returns] MFN report: ${mfnReturns.length} rows, ${upsertedMfn} upserted, total unique orders: ${returnedOrderIds.size}`)
+      } catch (err: any) {
+        console.warn(`[Amazon Returns] MFN report failed (may not have data): ${err.message}`)
       }
-      console.log(`[Amazon Returns] MFN report: ${mfnReturns.length} rows, ${upsertedMfn} upserted, total unique orders: ${returnedOrderIds.size}`)
-    } catch (err: any) {
-      console.warn(`[Amazon Returns] MFN report failed (may not have data): ${err.message}`)
     }
 
     recordsProcessed = returnedOrderIds.size
@@ -115,8 +123,8 @@ export async function syncAmazonReturns(
           tenantId,
           platformId,
           externalOrderId: { in: batch },
-          // Only update orders that aren't already returned/cancelled
-          status: { in: ['delivered', 'shipped'] },
+          // Fix #16: Include all non-terminal statuses that should transition to 'returned'
+          status: { in: ['delivered', 'shipped', 'confirmed', 'processing'] },
         },
         data: {
           status: 'returned',
@@ -127,18 +135,25 @@ export async function syncAmazonReturns(
 
     console.log(`[Amazon Returns] Updated ${ordersUpdated} orders to 'returned' status, ${returnsUpserted} return records upserted`)
 
-    // Backfill refundAmount from sales_orders.totalAmount for any returns missing it
+    // Fix #2: Backfill refundAmount — divide order total by number of return records per order
+    // to avoid inflating refund totals when an order has multiple returned items
     try {
       await prisma.$executeRaw`
         UPDATE amazon_returns ar
-        SET "refundAmount" = so."totalAmount"::numeric
+        SET "refundAmount" = (so."totalAmount"::numeric / GREATEST(rc.cnt, 1))
         FROM sales_orders so
+        JOIN (
+          SELECT "orderId", COUNT(*)::int as cnt
+          FROM amazon_returns
+          WHERE "tenantId" = ${tenantId} AND "refundAmount" IS NULL AND "orderId" IS NOT NULL
+          GROUP BY "orderId"
+        ) rc ON rc."orderId" = ar."orderId"
         WHERE ar."orderId" = so.id
           AND ar."tenantId" = ${tenantId}
           AND ar."refundAmount" IS NULL
           AND so."totalAmount" IS NOT NULL
       `
-      console.log(`[Amazon Returns] Backfilled refundAmount from linked orders`)
+      console.log(`[Amazon Returns] Backfilled refundAmount from linked orders (divided by return count per order)`)
     } catch (err: any) {
       console.warn(`[Amazon Returns] refundAmount backfill failed: ${err.message}`)
     }
@@ -194,8 +209,11 @@ async function upsertReturnRecords(
       const returnDate = returnDateStr ? new Date(returnDateStr) : null
       const validReturnDate = returnDate && !isNaN(returnDate.getTime()) ? returnDate : null
 
+      // Try to get item-level refund amount from report
       const refundStr = row['Refund amount'] || row['refund-amount'] || null
-      const refundAmount = refundStr ? parseFloat(refundStr) : null
+      // Also try item price as a better per-item refund proxy than order total
+      const itemPriceStr = row['item-price'] || row['Item price'] || null
+      const refundAmount = refundStr ? parseFloat(refundStr) : (itemPriceStr ? parseFloat(itemPriceStr) : null)
 
       const data = {
         tenantId,
@@ -286,8 +304,8 @@ async function downloadReturnReport(
 
   console.log(`[Amazon Returns] Created report ${reportType}, id: ${reportId}`)
 
-  // Step 2: Poll until report is ready (max 10 minutes)
-  const MAX_POLL_TIME = 10 * 60 * 1000
+  // Fix #6: Reduced polling timeout from 10 min to 2 min to fit within 5-min maxDuration
+  const MAX_POLL_TIME = 2 * 60 * 1000
   const POLL_INTERVAL = 15 * 1000
   const pollStart = Date.now()
   let reportDocumentId: string | null = null

@@ -258,13 +258,20 @@ export async function getAmazonAnalytics(
     cancellationTrend,
     returnOrdersData,
   ] = await Promise.all([
-    // Status distribution
+    // Status distribution — treat shipped orders older than 3 days as delivered
+    // (Amazon SP-API has no "Delivered" status; Amazon India FBA delivers in 2-5 days)
     prisma.$queryRaw<{ status: string; cnt: string; total: string }[]>`
-      SELECT so.status, COUNT(*)::text as cnt, COALESCE(SUM(so."totalAmount"::numeric), 0) as total
+      SELECT
+        CASE
+          WHEN so.status = 'shipped' AND so."orderedAt" < NOW() - INTERVAL '3 days' THEN 'delivered'
+          ELSE so.status
+        END as status,
+        COUNT(*)::text as cnt,
+        COALESCE(SUM(so."totalAmount"::numeric), 0) as total
       FROM sales_orders so
       JOIN sales_platforms sp ON so."platformId" = sp.id
       WHERE so."tenantId" = ${tenantId} AND sp.name = 'amazon' ${dateFilter}
-      GROUP BY so.status
+      GROUP BY 1
     `,
 
     // Fulfillment channel from metadata
@@ -298,7 +305,7 @@ export async function getAmazonAnalytics(
       SELECT
         TO_CHAR(so."orderedAt", 'YYYY-MM') as month,
         COUNT(*)::text as total,
-        COUNT(CASE WHEN so.status = 'delivered' THEN 1 END)::text as delivered,
+        COUNT(CASE WHEN so.status = 'delivered' OR (so.status = 'shipped' AND so."orderedAt" < NOW() - INTERVAL '3 days') THEN 1 END)::text as delivered,
         COUNT(CASE WHEN so.status = 'cancelled' THEN 1 END)::text as cancelled,
         COUNT(CASE WHEN so.status = 'returned' THEN 1 END)::text as returned,
         COALESCE(SUM(CASE WHEN so.status IN ('delivered','shipped') THEN so."totalAmount"::numeric ELSE 0 END), 0) as revenue
@@ -322,16 +329,18 @@ export async function getAmazonAnalytics(
         ${dateFilter}
     `,
 
-    // Cancellation monthly trend
+    // Cancellation trend — filter by orderedAt (consistent with other queries) so short
+    // date ranges still show cancelled orders placed in that window.
+    // For short periods use daily buckets, monthly for longer ranges.
     prisma.$queryRaw<{ month: string; cnt: string }[]>`
       SELECT
-        TO_CHAR(so."orderedAt", 'YYYY-MM') as month,
+        TO_CHAR(so."orderedAt", ${opts.startDate && opts.endDate && (new Date(opts.endDate).getTime() - new Date(opts.startDate).getTime()) < 90 * 86400000 ? Prisma.sql`'YYYY-MM-DD'` : Prisma.sql`'YYYY-MM'`}) as month,
         COUNT(*)::text as cnt
       FROM sales_orders so
       JOIN sales_platforms sp ON so."platformId" = sp.id
       WHERE so."tenantId" = ${tenantId} AND sp.name = 'amazon' AND so.status = 'cancelled'
         ${dateFilter}
-      GROUP BY TO_CHAR(so."orderedAt", 'YYYY-MM')
+      GROUP BY month
       ORDER BY month
     `,
 
@@ -408,30 +417,8 @@ export async function getAmazonAnalytics(
   } catch {}
   const returnRate = eligibleForReturn > 0 ? (accurateReturnCount / eligibleForReturn) * 100 : 0
 
-  // Delivery rate: count orders delivered within the date range (by deliveredAt, not orderedAt)
-  // This prevents 0% delivery rate for short periods where orders are placed but not yet delivered
-  let accurateDeliveryRate = totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0
-  if (opts.startDate || opts.endDate) {
-    try {
-      const deliveredInPeriod = await prisma.$queryRaw<{ cnt: string; total_orders: string }[]>`
-        SELECT
-          COUNT(CASE WHEN so."deliveredAt" IS NOT NULL THEN 1 END)::text as cnt,
-          COUNT(*)::text as total_orders
-        FROM sales_orders so
-        JOIN sales_platforms sp ON so."platformId" = sp.id
-        WHERE so."tenantId" = ${tenantId} AND sp.name = 'amazon'
-          AND (
-            (so."orderedAt" >= ${new Date(opts.startDate || '2000-01-01')} AND so."orderedAt" <= ${new Date(opts.endDate || new Date().toISOString())})
-            OR (so."deliveredAt" >= ${new Date(opts.startDate || '2000-01-01')} AND so."deliveredAt" <= ${new Date(opts.endDate || new Date().toISOString())})
-          )
-      `
-      const deliveredCnt = Number(deliveredInPeriod[0]?.cnt || 0)
-      const totalInPeriod = Number(deliveredInPeriod[0]?.total_orders || 0)
-      if (totalInPeriod > 0) {
-        accurateDeliveryRate = (deliveredCnt / totalInPeriod) * 100
-      }
-    } catch {}
-  }
+  // Delivery rate: use the status distribution which already infers delivered from shipped > 3 days
+  const accurateDeliveryRate = totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0
 
   // Fetch inventory data (non-critical, don't let it crash the whole response)
   let inventory: AmazonAnalytics['inventory'] = {
@@ -466,6 +453,7 @@ export async function getAmazonAnalytics(
           ws.sku,
           COALESCE(fp.title, fp2.title) as product_name,
           COALESCE(pm.asin, pm2.asin,
+            ws.metadata->>'asin',
             CASE WHEN ws.sku ~ '^B0[A-Z0-9]{8,}$' THEN ws.sku ELSE NULL END
           ) as asin,
           COALESCE(fp.color, fp2.color) as color,
@@ -569,9 +557,9 @@ export async function getAmazonAnalytics(
       avgRefund: uniqueRefundOrders > 0 ? refundValue / uniqueRefundOrders : 0,
     },
     fulfillment: {
-      afn: fulMap['AFN'] || fulMap['Amazon'] || 0,
-      mfn: fulMap['MFN'] || fulMap['Merchant'] || 0,
-      unknown: fulMap['Unknown'] || 0,
+      afn: (fulMap['AFN'] || 0) + (fulMap['AMAZON'] || 0) + (fulMap['afn'] || 0) + (fulMap['Amazon'] || 0),
+      mfn: (fulMap['MFN'] || 0) + (fulMap['MERCHANT'] || 0) + (fulMap['mfn'] || 0) + (fulMap['Merchant'] || 0),
+      unknown: fulMap['Unknown'] || fulMap['unknown'] || 0,
     },
     deliveryTimeline: {
       avgDaysToShip: Number(Number(timelineData[0]?.avg_ship_days || 0).toFixed(1)),

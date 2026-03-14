@@ -38,7 +38,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (syncType === 'returns' || syncType === 'all') {
-      results.returns = await syncAmazonReturns(currentUser.tenantId, daysBack)
+      // Fix #12: Use 90-day window for returns (consistent with cron) instead of default 7
+      const returnsDaysBack = body.options?.daysBack || 90
+      results.returns = await syncAmazonReturns(currentUser.tenantId, returnsDaysBack)
     }
 
     return NextResponse.json({ success: true, results })

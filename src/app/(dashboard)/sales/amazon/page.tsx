@@ -108,6 +108,13 @@ export default function AmazonAnalyticsPage() {
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
+  // Fetch last sync times
+  const { data: syncStatus, mutate: mutateSyncStatus } = useSWR<Record<string, string | null>>(
+    '/api/sales/sync-status',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  )
+
   async function handleSync(syncType: 'orders' | 'inventory' | 'returns') {
     setSyncing(s => ({ ...s, [syncType]: true }))
     setSyncMsg(null)
@@ -120,6 +127,7 @@ export default function AmazonAnalyticsPage() {
       const json = await res.json()
       if (json.success) {
         setSyncMsg(`${syncType} sync complete`)
+        mutateSyncStatus()
       } else {
         setSyncMsg(`Sync failed: ${json.error || 'unknown error'}`)
       }
@@ -286,39 +294,32 @@ export default function AmazonAnalyticsPage() {
       </div>
 
       {/* Sync Bar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!!syncing['orders']}
-          onClick={() => handleSync('orders')}
-          className="h-8 gap-1.5"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${syncing['orders'] ? 'animate-spin' : ''}`} />
-          {syncing['orders'] ? 'Syncing...' : 'Sync Orders'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!!syncing['inventory']}
-          onClick={() => handleSync('inventory')}
-          className="h-8 gap-1.5"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${syncing['inventory'] ? 'animate-spin' : ''}`} />
-          {syncing['inventory'] ? 'Syncing...' : 'Sync Inventory'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!!syncing['returns']}
-          onClick={() => handleSync('returns')}
-          className="h-8 gap-1.5"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${syncing['returns'] ? 'animate-spin' : ''}`} />
-          {syncing['returns'] ? 'Syncing...' : 'Sync Returns'}
-        </Button>
+      <div className="flex items-center gap-3 flex-wrap">
+        {([
+          { key: 'orders', label: 'Sync Orders', syncType: 'amazon_orders' },
+          { key: 'inventory', label: 'Sync Inventory', syncType: 'fba_inventory' },
+          { key: 'returns', label: 'Sync Returns', syncType: 'amazon_returns' },
+        ] as const).map(({ key, label, syncType }) => (
+          <div key={key} className="flex flex-col items-start">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!syncing[key]}
+              onClick={() => handleSync(key)}
+              className="h-8 gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing[key] ? 'animate-spin' : ''}`} />
+              {syncing[key] ? 'Syncing...' : label}
+            </Button>
+            <span className="text-[10px] text-muted-foreground mt-0.5 pl-1">
+              {syncStatus?.[syncType]
+                ? `Last: ${formatDistanceToNow(new Date(syncStatus[syncType]!), { addSuffix: true })}`
+                : 'Never synced'}
+            </span>
+          </div>
+        ))}
         {syncMsg && (
-          <span className={`text-xs ${syncMsg.includes('failed') ? 'text-red-500' : 'text-green-600'}`}>
+          <span className={`text-xs self-start mt-1.5 ${syncMsg.includes('failed') ? 'text-red-500' : 'text-green-600'}`}>
             {syncMsg}
           </span>
         )}

@@ -1,11 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
+import { format } from 'date-fns'
 import { RefreshCw, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
+import { fetcher } from '@/lib/swr'
 
 interface SyncAction {
   key: string
@@ -66,8 +69,20 @@ interface SyncResult {
   details?: Record<string, unknown>
 }
 
+const SYNC_STATUS_MAP: { syncType: string; label: string }[] = [
+  { syncType: 'amazon_orders', label: 'Amazon Orders' },
+  { syncType: 'fba_inventory', label: 'Amazon FBA Inventory' },
+  { syncType: 'amazon_returns', label: 'Amazon Returns' },
+  { syncType: 'shopify_orders', label: 'Shopify Orders & Inventory' },
+]
+
 export default function SyncPage() {
   const [syncResults, setSyncResults] = useState<Record<string, SyncResult>>({})
+  const { data: syncStatus, mutate: mutateSyncStatus } = useSWR<Record<string, string | null>>(
+    '/api/sales/sync-status',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  )
 
   const handleSync = async (action: SyncAction) => {
     setSyncResults(prev => ({
@@ -105,6 +120,7 @@ export default function SyncPage() {
           details: data.results,
         },
       }))
+      mutateSyncStatus()
     } catch (error: any) {
       setSyncResults(prev => ({
         ...prev,
@@ -221,26 +237,24 @@ export default function SyncPage() {
         })}
       </div>
 
-      {/* Auto-Sync Info */}
+      {/* Last Synced Status */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Automatic Sync Schedule</CardTitle>
-          <CardDescription>These sync jobs run automatically via Vercel Cron</CardDescription>
+          <CardTitle className="text-base">Last Synced</CardTitle>
+          <CardDescription>Auto-sync runs every 4 hours via Vercel Cron</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between py-2 border-b">
-              <span className="font-medium">Amazon Orders</span>
-              <span className="text-muted-foreground">Every 4 hours (at :00)</span>
-            </div>
-            <div className="flex justify-between py-2 border-b">
-              <span className="font-medium">Amazon FBA Inventory</span>
-              <span className="text-muted-foreground">Every 4 hours (at :30)</span>
-            </div>
-            <div className="flex justify-between py-2">
-              <span className="font-medium">Shopify Orders & Inventory</span>
-              <span className="text-muted-foreground">Every 4 hours (at :15)</span>
-            </div>
+            {SYNC_STATUS_MAP.map(({ syncType, label }, i) => (
+              <div key={syncType} className={`flex justify-between py-2 ${i < SYNC_STATUS_MAP.length - 1 ? 'border-b' : ''}`}>
+                <span className="font-medium">{label}</span>
+                <span className="text-muted-foreground">
+                  {syncStatus?.[syncType]
+                    ? format(new Date(syncStatus[syncType]!), 'dd MMM yyyy, hh:mm a')
+                    : 'Never synced'}
+                </span>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

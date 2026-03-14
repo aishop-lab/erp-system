@@ -6,6 +6,12 @@
     },
     "src/app/api/cron/sync-returns/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/cron/sync-orders/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/sync-inventory/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

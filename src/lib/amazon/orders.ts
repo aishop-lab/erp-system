@@ -71,18 +71,38 @@ export async function syncAmazonOrders(
       try {
         const existing = await prisma.salesOrder.findFirst({
           where: { tenantId, externalOrderId: order.amazon_order_id },
-          select: { id: true },
+          select: { id: true, _count: { select: { items: true } } },
         })
 
-        const status = mapOrderStatus(order.order_status)
+        const now = new Date()
+        let status = mapOrderStatus(order.order_status)
+
+        // Fix #1: Infer 'delivered' from latest_delivery_date
+        // Amazon SP-API has no "Delivered" status, so we check if the delivery window has passed
+        if (status === 'shipped' && order.latest_delivery_date) {
+          const deliveryDate = new Date(order.latest_delivery_date)
+          if (deliveryDate <= now) {
+            status = 'delivered'
+          }
+        }
+
         const orderTotalFromApi = order.order_total ? parseFloat(order.order_total.amount) : 0
+
+        // Fix #4: Use actual ship dates instead of last_update_date
+        const shippedAt = order.order_status === 'Shipped'
+          ? new Date(order.earliest_ship_date || order.latest_ship_date || order.last_update_date)
+          : null
+        const deliveredAt = status === 'delivered' && order.latest_delivery_date
+          ? new Date(order.latest_delivery_date)
+          : null
 
         if (existing) {
           const updateData: any = {
             status: status as any,
-            paymentStatus: mapPaymentStatus(order.order_status),
+            paymentStatus: mapPaymentStatus(order.order_status, status),
             fulfillmentStatus: mapFulfillmentStatus(order.order_status),
-            shippedAt: order.order_status === 'Shipped' ? new Date(order.last_update_date) : undefined,
+            shippedAt: shippedAt || undefined,
+            deliveredAt: deliveredAt || undefined,
             cancelledAt: order.order_status === 'Canceled' ? new Date(order.last_update_date) : undefined,
             platformMetadata: buildMetadata(order),
           }
@@ -113,6 +133,12 @@ export async function syncAmazonOrders(
             where: { id: existing.id },
             data: updateData,
           })
+
+          // Fix #17: Backfill items if the order has 0 items
+          if (existing._count.items === 0) {
+            await processOrderItems(amazonClient, tenantId, existing.id, order.amazon_order_id, skuToProduct)
+          }
+
           recordsUpdated++
         } else {
           const newOrder = await prisma.salesOrder.create({
@@ -128,18 +154,19 @@ export async function syncAmazonOrders(
               shippingAddress: order.shipping_address || undefined,
               subtotal: orderTotalFromApi,
               totalAmount: orderTotalFromApi,
-              paymentStatus: mapPaymentStatus(order.order_status),
+              paymentStatus: mapPaymentStatus(order.order_status, status),
               fulfillmentStatus: mapFulfillmentStatus(order.order_status),
               platformMetadata: buildMetadata(order),
               orderedAt: new Date(order.purchase_date),
-              shippedAt: order.order_status === 'Shipped' ? new Date(order.last_update_date) : null,
+              shippedAt,
+              deliveredAt,
               cancelledAt: order.order_status === 'Canceled' ? new Date(order.last_update_date) : null,
             },
           })
           recordsCreated++
 
           // Fetch and create order items
-          await processOrderItems(amazonClient, tenantId, newOrder.id, order.amazon_order_id, skuToProduct)
+          const itemStats = await processOrderItems(amazonClient, tenantId, newOrder.id, order.amazon_order_id, skuToProduct)
 
           // If order_total was 0, compute from items
           let finalTotal = orderTotalFromApi
@@ -157,7 +184,8 @@ export async function syncAmazonOrders(
             }
           }
 
-          // Create payment record
+          // Fix #9: Only mark as paid when delivered, not at order placement
+          const paymentStatus = status === 'delivered' ? 'completed' : 'pending'
           if (finalTotal > 0) {
             await prisma.salesPayment.create({
               data: {
@@ -166,23 +194,32 @@ export async function syncAmazonOrders(
                 amount: finalTotal,
                 method: order.payment_method || 'amazon',
                 transactionId: order.amazon_order_id,
-                status: mapPaymentStatus(order.order_status) === 'paid' ? 'completed' : 'pending',
-                paidAt: mapPaymentStatus(order.order_status) === 'paid' ? new Date(order.purchase_date) : null,
+                status: paymentStatus,
+                paidAt: status === 'delivered' ? (deliveredAt || new Date(order.purchase_date)) : null,
               },
             })
           }
 
-          // Create revenue record
+          // Fix #8: Compute discount and tax from items for SalesRevenue
+          // Fix #10: Log errors instead of silently swallowing
+          const totalDiscount = itemStats.totalDiscount
+          const totalTax = itemStats.totalTax
           await prisma.salesRevenue.create({
             data: {
               tenantId,
               orderId: newOrder.id,
               platformId,
               grossRevenue: finalTotal,
-              netRevenue: finalTotal,
+              discount: totalDiscount,
+              taxCollected: totalTax,
+              netRevenue: finalTotal - totalDiscount,
               date: new Date(order.purchase_date),
             },
-          }).catch(() => {}) // Ignore if duplicate
+          }).catch((err) => {
+            if (!String(err).includes('Unique constraint')) {
+              console.error(`[Amazon Orders] Revenue record failed for order ${order.amazon_order_id}:`, err)
+            }
+          })
         }
       } catch (err) {
         console.error(`[Amazon Orders] Error processing ${order.amazon_order_id}:`, err)
@@ -278,15 +315,21 @@ async function processOrderItems(
   orderId: string,
   amazonOrderId: string,
   skuToProduct: Map<string, string>
-) {
+): Promise<{ totalDiscount: number; totalTax: number }> {
   const items = await fetchOrderItems(amazonClient, amazonOrderId)
+  let totalDiscount = 0
+  let totalTax = 0
 
   for (const item of items) {
     const finishedProductId = skuToProduct.get(item.seller_sku) ?? skuToProduct.get(item.asin) ?? null
     const unitPrice = item.item_price ? parseFloat(item.item_price.amount) / (item.quantity_ordered || 1) : 0
     const taxAmount = item.item_tax ? parseFloat(item.item_tax.amount) : 0
     const discount = item.promotion_discount ? Math.abs(parseFloat(item.promotion_discount.amount)) : 0
-    const total = (item.item_price ? parseFloat(item.item_price.amount) : 0) + taxAmount - discount
+    // Fix #3: Amazon India ItemPrice already includes GST — don't add taxAmount on top
+    const total = (item.item_price ? parseFloat(item.item_price.amount) : 0) - discount
+
+    totalDiscount += discount
+    totalTax += taxAmount
 
     await prisma.salesOrderItem.create({
       data: {
@@ -303,6 +346,8 @@ async function processOrderItems(
       },
     })
   }
+
+  return { totalDiscount, totalTax }
 }
 
 // Status Mapping
@@ -321,9 +366,11 @@ function mapOrderStatus(amazonStatus: string): string {
   return map[amazonStatus] ?? 'pending'
 }
 
-function mapPaymentStatus(orderStatus: string): string {
+function mapPaymentStatus(orderStatus: string, resolvedStatus?: string): string {
   if (orderStatus === 'Canceled') return 'failed'
-  if (orderStatus === 'Shipped' || orderStatus === 'PartiallyShipped') return 'paid'
+  // Fix #9: Only mark paid when delivered
+  if (resolvedStatus === 'delivered') return 'paid'
+  if (orderStatus === 'Shipped' || orderStatus === 'PartiallyShipped') return 'pending'
   return 'pending'
 }
 
@@ -341,6 +388,11 @@ function buildMetadata(order: any) {
     is_prime: order.is_prime,
     is_business_order: order.is_business_order,
     marketplace_id: order.marketplace_id,
+    // Fix #1: Store delivery/ship date windows for reference
+    earliest_ship_date: order.earliest_ship_date,
+    latest_ship_date: order.latest_ship_date,
+    earliest_delivery_date: order.earliest_delivery_date,
+    latest_delivery_date: order.latest_delivery_date,
   }
 }
 
@@ -372,6 +424,11 @@ function normalizeOrderKeys(raw: any): any {
       : raw.shipping_address ?? null,
     is_prime: raw.IsPrime ?? raw.is_prime ?? false,
     is_business_order: raw.IsBusinessOrder ?? raw.is_business_order ?? false,
+    // Fix #1 & #4: Extract ship/delivery date windows from SP-API
+    earliest_ship_date: raw.EarliestShipDate ?? raw.earliest_ship_date ?? null,
+    latest_ship_date: raw.LatestShipDate ?? raw.latest_ship_date ?? null,
+    earliest_delivery_date: raw.EarliestDeliveryDate ?? raw.earliest_delivery_date ?? null,
+    latest_delivery_date: raw.LatestDeliveryDate ?? raw.latest_delivery_date ?? null,
   }
 }
 
@@ -382,8 +439,11 @@ function normalizeOrderItemKeys(raw: any): any {
     seller_sku: raw.SellerSKU ?? raw.seller_sku ?? '',
     title: raw.Title ?? raw.title ?? '',
     quantity_ordered: raw.QuantityOrdered ?? raw.quantity_ordered ?? 0,
+    quantity_shipped: raw.QuantityShipped ?? raw.quantity_shipped ?? 0,
     item_price: normMoney(raw.ItemPrice ?? raw.item_price),
     item_tax: normMoney(raw.ItemTax ?? raw.item_tax),
     promotion_discount: normMoney(raw.PromotionDiscount ?? raw.promotion_discount),
+    shipping_price: normMoney(raw.ShippingPrice ?? raw.shipping_price),
+    shipping_tax: normMoney(raw.ShippingTax ?? raw.shipping_tax),
   }
 }

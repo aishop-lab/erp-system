@@ -12,6 +12,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Fix #7: Prevent concurrent syncs
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000)
+  const runningSync = await prisma.syncLog.findFirst({
+    where: { syncType: 'fba_inventory', status: 'running', startedAt: { gte: thirtyMinAgo } },
+  })
+  if (runningSync) {
+    return NextResponse.json({ message: 'Sync already in progress', syncLogId: runningSync.id })
+  }
+
   try {
     const platforms = await prisma.salesPlatform.findMany({
       where: { name: 'amazon', isActive: true },

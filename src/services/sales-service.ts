@@ -112,7 +112,7 @@ export async function getSalesDashboard(
     prisma.salesOrder.count({ where: { tenantId, status: 'delivered', ...dateWhere } }),
     prisma.salesOrder.count({ where: { tenantId, status: 'cancelled', ...dateWhere } }),
     prisma.salesOrder.aggregate({
-      where: { tenantId, ...dateWhere },
+      where: { tenantId, status: { notIn: ['cancelled', 'returned', 'refunded'] }, ...dateWhere },
       _sum: { totalAmount: true },
     }),
     prisma.salesOrder.groupBy({

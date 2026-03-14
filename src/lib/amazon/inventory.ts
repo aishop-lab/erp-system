@@ -73,8 +73,28 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
       try {
         const sku = item.sellerSku || item.seller_sku
         const availableQty = item.fulfillableQuantity ?? item.fulfillable_quantity ?? 0
-        const reservedQty = item.reservedQuantity?.totalReservedQuantity ?? item.reserved_quantity ?? 0
+        // Fix #11: Handle both camelCase and snake_case for reservedQuantity
+        const reservedObj = item.reservedQuantity || item.reserved_quantity
+        const reservedQty = typeof reservedObj === 'object'
+          ? (reservedObj?.totalReservedQuantity ?? 0)
+          : (reservedObj ?? 0)
         const finishedProductId = skuProductMap.get(sku) || null
+
+        // Fix #11: Capture additional inventory details that were previously discarded
+        const inventoryDetails = item.inventoryDetails || item.inventory_details || {}
+        const metadata = {
+          asin: item.asin || item.ASIN || null,
+          fnSku: item.fnSku || item.fn_sku || null,
+          productName: item.productName || item.product_name || null,
+          condition: item.condition || null,
+          totalQuantity: item.totalQuantity ?? item.total_quantity ?? null,
+          inboundWorkingQuantity: inventoryDetails.inboundWorkingQuantity ?? inventoryDetails.inbound_working_quantity ?? null,
+          inboundShippedQuantity: inventoryDetails.inboundShippedQuantity ?? inventoryDetails.inbound_shipped_quantity ?? null,
+          inboundReceivingQuantity: inventoryDetails.inboundReceivingQuantity ?? inventoryDetails.inbound_receiving_quantity ?? null,
+          unfulfillableQuantity: inventoryDetails.unfulfillableQuantity ?? inventoryDetails.unfulfillable_quantity ?? null,
+          reservedPendingCustomerOrder: reservedObj?.pendingCustomerOrderQuantity ?? null,
+          reservedPendingTransshipment: reservedObj?.pendingTransshipmentQuantity ?? null,
+        }
 
         const existing = await prisma.warehouseStock.findFirst({
           where: { warehouseId: fbaWarehouse.id, sku },
@@ -86,6 +106,7 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
             data: {
               qtyOnHand: availableQty,
               qtyReserved: reservedQty,
+              metadata,
               lastSyncedAt: new Date(),
               ...(finishedProductId && !existing.finishedProductId ? { finishedProductId } : {}),
             },
@@ -100,6 +121,7 @@ export async function syncFbaInventory(tenantId: string): Promise<InventorySyncS
               finishedProductId,
               qtyOnHand: availableQty,
               qtyReserved: reservedQty,
+              metadata,
               lastSyncedAt: new Date(),
             },
           })
